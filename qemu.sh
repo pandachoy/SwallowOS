@@ -1,8 +1,5 @@
-#!/bin/bash
+#!/bin/sh
+set -e
+. ./iso.sh
 
-make
-mkdir -p isodir/boot/grub
-cp SwallowOS.bin isodir/boot/SwallowOS.bin
-cp misc/grub.cfg isodir/boot/grub/grub.cfg
-grub-mkrescue -o SwallowOS.iso isodir
-qemu-system-i386 -cdrom SwallowOS.iso
+qemu-system-$(./target-triplet-to-arch.sh $HOST) -cdrom SwallowOS.iso

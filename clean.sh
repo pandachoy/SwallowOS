@@ -1,4 +1,11 @@
-#!/bin/bash
+#!/bin/sh
+set -e
+. ./config.sh
 
-rm -rf isodir SwallowOS.iso SwallowOS.bin
-make clean
+for PROJECT in $PROJECTS; do
+    (cd $PROJECT && $MAKE clean)
+done
+
+rm -rf sysroot
+rm -rf isodir
+rm -rf SwallowOS.iso
