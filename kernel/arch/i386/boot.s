@@ -46,7 +46,9 @@ _start:
 	# Only map the kernel.
 	cmpl $_kernel_start, %esi # _kernel_start的定义在linker.ld内，注意_kernel_start地址还未+0xC0000000，
 	jl 2f
-	cmpl $(_kernel_end - 0xC0000000), %esi # 因为加载地址和虚拟地址不同，所以要-0xC0000000，实际上在这一步做了地址转换
+	# cmpl $(_kernel_end - 0xC0000000), %esi # 因为加载地址和虚拟地址不同，所以要-0xC0000000，实际上在这一步做了地址转换
+	# jge 3f
+	cmpl $(boot_page_table1 - 0xC0000000 + 4096), %edi     # 这里不取_kernel_start的位置，而是取一个页目录项的范围，即页表地址为
 	jge 3f
 
 	# Map physical address as "present, writable". Note that this maps
@@ -78,7 +80,7 @@ _start:
 
 	# Enable paging and the write-protect bit.
 	movl %cr0, %ecx
-	orl $0x80010000, %ecx
+	orl $0x80000000, %ecx
 	movl %ecx, %cr0
 
 	# Jump to higher half with an absolute jump. 

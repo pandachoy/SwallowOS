@@ -4,26 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
-char* my_itoa(int value, char* str, int base)
-{
-	if (base < 2 || base > 32)
-	{
-		printf("Wrong radix!\n");
-		return str;
-	}
-	char* ret = str;
-	if (value == 0)
-	{
-		*str++ = '0';
-		*str = '\0';
-		return ret;
-	}
-	if (base == 10 && value < 0)
-	{
-		value = -value;
-		*str++ = '-';
-	}
-	char* start = str;
+static char *itoa_internal(unsigned int value, char* str, int base) {
+    char* start = str;
 	// 从右到左依次将数字的每一位存储起来
 	size_t num = value;
 	while (num != 0)
@@ -46,7 +28,45 @@ char* my_itoa(int value, char* str, int base)
 		*left = *right;
 		*right = tmp;
 	}
-	return ret;
+	return start;
+}
+
+static char* itoa_signed(int value, char* str, int base)
+{
+	if (base < 2 || base > 32)
+	{
+		printf("Wrong radix!\n");
+		return str;
+	}
+	char* ret = str;
+	if (value == 0)
+	{
+		*str++ = '0';
+		*str = '\0';
+		return ret;
+	}
+	if (base == 10 && value < 0)
+	{
+		value = -value;
+		*str++ = '-';
+	}
+    return itoa_internal(value > 0 ? value : -value, str, base);
+}
+
+static char* itoa_unsigned(unsigned int value, char* str, int base) {
+    if (base < 2 || base > 32)
+	{
+		printf("Wrong radix!\n");
+		return str;
+	}
+	char* ret = str;
+	if (value == 0)
+	{
+		*str++ = '0';
+		*str = '\0';
+		return ret;
+	}
+    return itoa_internal(value, str, base);
 }
 
 static bool print(const char *data, size_t length) {
@@ -108,8 +128,17 @@ int printf(const char*restrict format, ...) {
         } else if (*format == 'd') {
             format++;
             char str[21] = {0};
-            int num = (char) va_arg(parameters, int);
-            my_itoa(num, str, 10);
+            int num = (int) va_arg(parameters, int);
+            itoa_signed(num, str, 10);
+            size_t len = strlen(str);
+            if (!print(str, strlen(str)))
+                return -1;
+            written += len;
+        } else if (*format == 'u') {
+            format++;
+            char str[32] = {0};
+            unsigned int num = (unsigned int) va_arg(parameters, unsigned int);
+            itoa_unsigned(num, str, 10);
             size_t len = strlen(str);
             if (!print(str, strlen(str)))
                 return -1;
