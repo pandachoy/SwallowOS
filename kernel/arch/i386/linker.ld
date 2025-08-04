@@ -17,6 +17,11 @@ SECTIONS
            *(.multiboot.text)
        }
 
+	   .lowdata : {
+           *(.lowdata)
+		   *(.lowbss)
+       }
+
 	. += 0xC0000000;
 	/* Add a symbol that indicates the start address of the kernel. */
 	/* 加载地址和虚拟地址不同 */

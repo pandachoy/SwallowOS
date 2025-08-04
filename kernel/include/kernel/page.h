@@ -1,13 +1,10 @@
 #ifndef _PAGE_H
 #define _PAGE_H
 
-#include <stdint.h>
+#define PAGE_SIZE 0x1000
 
-/* 页帧格式 */
-typedef uint32_t *pageframe_t;
-
-pageframe_t kalloc_frame_init();
-pageframe_t kalloc_frame();
-void kfree_frame(pageframe_t a);
+void init_page() __attribute__((section(".multiboot.text")));
+void load_page_directory() __attribute__((section(".multiboot.text")));
+void enable_paging() __attribute__((section(".multiboot.text")));
 
 #endif

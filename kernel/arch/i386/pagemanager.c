@@ -1,6 +1,7 @@
 
 #include <stddef.h>
-#include <kernel/page.h>     
+#include <kernel/pagemanager.h>   
+#include <kernel/page.h>  
 
 /* 页分配有很多方法，如bitmap、stack/list、buddy alocations等，这里用最简单的bitmap */
 
@@ -38,13 +39,13 @@ pageframe_t kalloc_frame_init() {
         frame_map = (uint32_t *)(&_kernel_end + 1);
         /* 在frame_map后面填充其数据以及确定startframe */
         /* 首先要选一个合适的npages，设置为一个接近值x，则(x*4096 + x / 32) < (MEM_END -  frame_map)， 解出 x = (MEM_END - frame_map) / (4096 + 1/32), 实际上除数可以算成4097来估算 */
-        npages = (MEM_END - (uint32_t)frame_map) / (0x1000 + 1);
+        npages = (MEM_END - (uint32_t)frame_map) / (PAGE_SIZE + 1);
         /* 得到npages，即可容易算出startframe，注意4k对齐 */
         startframe = frame_map + (npages / UINT32_BITS);
-        if ((uint32_t)startframe % 0x1000 != 0)
-            startframe = (uint32_t*)(((uint32_t)startframe / 0x1000 + 1) * 0x1000);
+        if ((uint32_t)startframe % PAGE_SIZE != 0)
+            startframe = (uint32_t*)(((uint32_t)startframe / PAGE_SIZE + 1) * PAGE_SIZE);
         /* 检查页面是否超出内存，注意这里要考虑到VGA video占用的页，所以在比较的时候要减去4096 */
-        while (startframe + 0x1000 * npages > MEM_END - 0x1000)
+        while (startframe + PAGE_SIZE * npages > MEM_END - PAGE_SIZE)
             npages--;
         for (uint32_t *p = frame_map; p < startframe; ++p)
             *p = 0;
@@ -57,7 +58,7 @@ pageframe_t kalloc_frame_init() {
         }
     }
     set_frame_map(i, 1);
-    return (startframe + (i * 0x1000)); /* 0x1000(4kb) */
+    return (startframe + (i * PAGE_SIZE)); /* 0x1000(4kb) */
 }
 
 static uint32_t *pre_frames[PRE_ALLOCATING_NUM] = {0};
@@ -83,6 +84,6 @@ pageframe_t kalloc_frame() {
 void kfree_frame(pageframe_t a) {
     if (a < startframe) return;
 
-    unsigned int index = (a - startframe) / 0x1000;          /* get offset */
+    unsigned int index = (a - startframe) / PAGE_SIZE;          /* get offset */
     set_frame_map(index, 0);
 }
