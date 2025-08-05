@@ -1,8 +1,10 @@
-#include <limits.h>
+// #include <limits.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+
+#define UINT_MAX    (0x7fffffff * 2U + 1U)
 
 static char *itoa_internal(unsigned int value, char* str, int base) {
     char* start = str;
@@ -35,7 +37,7 @@ static char* itoa_signed(int value, char* str, int base)
 {
 	if (base < 2 || base > 32)
 	{
-		printf("Wrong radix!\n");
+		// printf("Wrong radix!\n");
 		return str;
 	}
 	char* ret = str;
@@ -56,7 +58,7 @@ static char* itoa_signed(int value, char* str, int base)
 static char* itoa_unsigned(unsigned int value, char* str, int base) {
     if (base < 2 || base > 32)
 	{
-		printf("Wrong radix!\n");
+		// printf("Wrong radix!\n");
 		return str;
 	}
 	char* ret = str;
@@ -83,7 +85,7 @@ int printf(const char*restrict format, ...) {
 
     int written = 0;
     while (*format != 0) {
-        size_t maxrem = INT_MAX - written;
+        size_t maxrem = UINT_MAX - written;
 
         if (format[0] != '%' || format[1] == '%') {
             if (format[0] == '%') /* two % */

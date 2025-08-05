@@ -1,0 +1,14 @@
+.section .text
+irq_stub_0:
+    cli
+    iretq
+
+irq_stub_1:
+    callq keyboard_handler
+    iretq
+
+.section .data
+.global irq_stub_table
+irq_stub_table:
+    .quad irq_stub_0
+    .quad irq_stub_1

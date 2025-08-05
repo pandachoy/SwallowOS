@@ -1,4 +1,4 @@
-#include <stdio.h>
+// #include <stdio.h>
 
 #include <kernel/tty.h>
 #include <kernel/gdt.h>
@@ -111,6 +111,7 @@ void kernel_main(void) {
     // NMI_disable();
 
     test_mm();
-    
+    test_keyboard();
+
     __asm__ volatile ("hlt");
 }

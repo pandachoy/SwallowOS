@@ -1,2 +1,2 @@
 #!/bin/sh
-echo i686-linux-gnu
+echo x86_64-linux-gnu
