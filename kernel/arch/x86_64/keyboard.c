@@ -4,7 +4,7 @@
 
 #define KEYBOARD_DATA_PORT      0x60
 #define KEYBOARD_IRQ_VECTOR     0x21
-#define KEYBOARD_IRQ_NUMBER        1
+#define KEYBOARD_IRQ_NUMBER      0x1
 
 #define KEYBOARD_BUFFER_SIZE     256
 volatile char keyboard_buffer[KEYBOARD_BUFFER_SIZE];

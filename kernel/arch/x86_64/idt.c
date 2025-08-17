@@ -44,8 +44,10 @@ static idtr_t idtr;
 
 __attribute__((noreturn))
 void exception_handler(void) {
-    __asm__ volatile ("cli");
-    __asm__ volatile ("sti");
+    // __asm__ volatile ("cli");
+    // __asm__ volatile ("sti");
+    cli();
+    sti();
 }
 
 void idt_set_descriptor(uint8_t vector, void *isr, uint8_t flags) {
@@ -82,5 +84,14 @@ void load_idt() {
 
     // __asm__ volatile ("cli"); /* unset the interrupt flag */
     __asm__ volatile ("lidt %0" : : "m"(idtr)); /* load the new IDT */
-    __asm__ volatile ("sti"); /* set the interrupt flag */
+    // __asm__ volatile ("sti"); /* set the interrupt flag */
+    // sti();
+}
+
+void cli() {
+    __asm__ volatile ("cli");
+}
+
+void sti() {
+    __asm__ volatile ("sti");
 }

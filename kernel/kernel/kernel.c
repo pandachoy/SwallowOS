@@ -6,6 +6,7 @@
 #include <kernel/pic.h>
 #include <kernel/nmi.h>
 #include <kernel/keyboard.h>
+#include <kernel/timer.h>
 #include <kernel/page.h>
 #include <kernel/list.h>
 #include <kernel/mm.h>
@@ -73,11 +74,12 @@ void test_helloworld() {
 /* test mm */
 // #define MEM_SIZE (1024*1024)
 // char MEM[MEM_SIZE] = { 0 };
+
 // #define M (16*16*16*16-1)
 // #define A 41649
 // #define C 31323
 // long long lcg(long long x) {
-// return (A * x + C);
+//     return (A * x + C);
 // }
 // void test_mm(void) {
 //     long long seed = 2342;
@@ -101,33 +103,116 @@ void test_helloworld() {
 
 /* test task */
 unsigned char ch_index = 0;
-void work(void) {
-    char str[2] = { 0 };
-    str[0] = 'A' + ch_index;
-    ch_index = (ch_index + 1) % 26;
-    while (1) {
-        printf("%s", str);
-        schedule();
+extern int irq_disable_counter;
+extern int postpone_task_switches_counter;
+extern struct list_head *ready_tcb_list;
+extern struct list_head *paused_task_list;
+extern struct list_head *sleeping_task_list;
+extern unsigned long time_slice_remaining;
+int block_status = 1;
+extern unsigned long get_timer_count();
+void print_list(struct list_head *l) {
+    struct list_head *p = l;
+    printf("(");
+    if (l) {
+        do {
+            printf("%u ", (container_of(p, struct thread_control_block, tcb_list))->task_id);
+            p = p->next;
+        } while (p != l);
     }
+    printf(") ");
+}
+static unsigned int list_size(struct list_head *list) {
+    // printf("[inner %u]", list);
+    if (!list)
+        return 0;
+
+    unsigned int size = 1;
+    struct list_head *p = list->next;
+    while (p != list) {
+        size++;
+        p = p->next;
+    }
+    return size;
 }
 void test_task(void) {
-    init_scheduler();
-    for (unsigned int i = 0; i < 8; ++i) {
-        create_task(work);
+    char str[2] = { 0 };
+    str[0] = 'A'; // + ch_index;
+    ch_index = (ch_index + 1) % 26;
+    static unsigned long count = UINT64_MAX;
+
+    static unsigned long postpone_flag = 1;
+    while (count--) {
+        for (unsigned long i=0; i<500000000; ++i);
+        if (current_task_TCB->state != RUNNING)
+            str[0] = 'a'; //str[0] - 'A' + 'a';
+        else
+            str[0] = 'A';
+        char *pattern = "[%s %u %u %u] ";
+        printf("[%u ] ", current_task_TCB->task_id);
+        print_list(sleeping_task_list);
+        print_list(ready_tcb_list);
+        print_list(paused_task_list);
+        // printf("[outer %u]", ready_tcb_list);
+        // list_size(ready_tcb_list);
+        // printf("[after outer %u]", list_size(ready_tcb_list));
+        // printf(pattern, str, current_task_TCB->task_id, list_size(ready_tcb_list), list_size(blocked_list));
+        // lock_scheduler();
+        // schedule();
+        // unlock_scheduler();
+        
+        if (count%2==0 && paused_task_list) {
+            printf("unblock ");
+            unblock_task(container_of(paused_task_list, struct thread_control_block, tcb_list));
+        }
+        else if (count%7==0) {
+            if (list_size(paused_task_list) <3) {
+                printf("block ");
+                block_task(PAUSED, NULL);                
+            }
+        }
+
+        // else if (count%11==0) {
+        //     if (postpone_flag) {
+        //         postpone_flag = 0;
+        //         printf("postpone ");
+        //         lock_stuff();
+        //     } else {
+        //         postpone_flag = 1;
+        //         printf("no postpone ");
+        //         unlock_stuff();
+        //     }
+        // }
+        else if (count%4==0) {
+            printf("sleep %u ", current_task_TCB->task_id);
+            nano_sleep_until(get_timer_count() + 65000);
+        }
+        else if (count%27==0) {
+            printf("useless sleep %u ", current_task_TCB->task_id);
+            nano_sleep_until(get_timer_count() - 1);
+        }  
+
     }
-    work();
 }
 
 void kernel_main(void) {
     // load_gdt();
     terminal_initialize();
     PIC_init();
-    keyboard_init();
+    // keyboard_init();
     load_idt();
+    timer_init();
     NMI_enable();
     NMI_disable();
 
-    test_task();
+    /* tasks */
+    init_scheduler();
+    for (unsigned int i = 0; i < 8; ++i) {
+        create_task(test_task);
+    }
+    sti();
+    kernel_idle_work();
+
 
     __asm__ volatile ("hlt");
 }

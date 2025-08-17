@@ -1,3 +1,6 @@
+.set RUNNING,    0x0
+.set READY,      0x1    
+
 # C declaration
 # void switch_to_task(thread_control_block *next_thread);
 # WARNING: Caller is expected to disable IRQs before calling
@@ -18,6 +21,8 @@ switch_to_task:
     push %rcx
     push %rsi
 
+    call update_time_used
+
     # save esp to current_task_TCB
     mov $current_task_TCB, %rsi
     mov (%rsi), %rsi
@@ -26,8 +31,26 @@ switch_to_task:
     add %rcx, %rsi
     mov %rsp, (%rsi)
 
+    # set current task's state
+    mov $current_task_TCB, %rsi
+    mov (%rsi), %rsi
+    mov $TCB_state_offset, %rcx
+    mov (%rcx), %rcx
+    add %rcx, %rsi
+    mov $READY, %ecx
+    mov %ecx, (%rsi)
+
     # load next task's state, next task saved in rdi
     mov %rdi, current_task_TCB
+    # set next task's state
+    mov $current_task_TCB, %rsi
+    mov (%rsi), %rsi
+    mov $TCB_state_offset, %rcx
+    mov (%rcx), %rcx
+    add %rcx, %rsi
+    mov $RUNNING, %ecx
+    mov %ecx, (%rsi)
+
     # load rsp
     mov $current_task_TCB, %rsi
     mov (%rsi), %rsi

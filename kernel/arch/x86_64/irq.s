@@ -1,6 +1,6 @@
 .section .text
 irq_stub_0:
-    cli
+    callq timer_handler
     iretq
 
 irq_stub_1:

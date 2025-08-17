@@ -4,9 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#define UINT_MAX    (0x7fffffff * 2U + 1U)
+#define UINT_MAX    0xffffffffffffffff
 
-static char *itoa_internal(unsigned int value, char* str, int base) {
+static char *itoa_internal(unsigned long value, char* str, int base) {
     char* start = str;
 	// 从右到左依次将数字的每一位存储起来
 	size_t num = value;
@@ -33,7 +33,7 @@ static char *itoa_internal(unsigned int value, char* str, int base) {
 	return start;
 }
 
-static char* itoa_signed(int value, char* str, int base)
+static char* itoa_signed(long value, char* str, int base)
 {
 	if (base < 2 || base > 32)
 	{
@@ -55,7 +55,7 @@ static char* itoa_signed(int value, char* str, int base)
     return itoa_internal(value > 0 ? value : -value, str, base);
 }
 
-static char* itoa_unsigned(unsigned int value, char* str, int base) {
+static char* itoa_unsigned(unsigned long value, char* str, int base) {
     if (base < 2 || base > 32)
 	{
 		// printf("Wrong radix!\n");
@@ -129,8 +129,9 @@ int printf(const char*restrict format, ...) {
             written += len;
         } else if (*format == 'd') {
             format++;
-            char str[21] = {0};
-            int num = (int) va_arg(parameters, int);
+            char str[32];
+            memset(str, 0, 32);
+            int num = (long) va_arg(parameters, long);
             itoa_signed(num, str, 10);
             size_t len = strlen(str);
             if (!print(str, strlen(str)))
@@ -138,8 +139,9 @@ int printf(const char*restrict format, ...) {
             written += len;
         } else if (*format == 'u') {
             format++;
-            char str[32] = {0};
-            unsigned int num = (unsigned int) va_arg(parameters, unsigned int);
+            char str[32];
+            memset(str, 0, 32);
+            unsigned long num = (unsigned long) va_arg(parameters, unsigned long);
             itoa_unsigned(num, str, 10);
             size_t len = strlen(str);
             if (!print(str, strlen(str)))
