@@ -8,7 +8,8 @@ typedef enum {
     RUNNING,
     READY,
     PAUSED,
-    SLEEPING
+    SLEEPING,
+    TERMINATED
 } state_t;
 
 struct thread_control_block {
@@ -31,11 +32,12 @@ struct thread_control_block *create_task(void (*ent));
 void schedule();
 void lock_scheduler();
 void unlock_scheduler();
-void block_task(state_t reason, void *data);
+void block_task(state_t reason);
 void unblock_task(struct thread_control_block *task);
 void lock_stuff(void);
 void unlock_stuff(void);
 void nano_sleep_until(uint64_t when);
+void terminate_task(void);
 void task_hook_in_timer_handler(void);
 void kernel_idle_work(void);
 

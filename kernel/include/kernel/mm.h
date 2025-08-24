@@ -11,15 +11,17 @@
 typedef struct {
     struct list_head all;
     int used;
+    unsigned int page_tag_index;
     union {
         char data[0];
         struct list_head free;
     };
 } chunk;
 
-void kmemory_init(void *mem, size_t size);
+void kmemory_init();
 void *kmalloc(size_t size);
 void kfree(void *mem);
 int kmcheck(void);
+int km_freecheck(void);
 
 #endif

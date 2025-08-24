@@ -160,15 +160,23 @@ void test_task(void) {
         // lock_scheduler();
         // schedule();
         // unlock_scheduler();
-        
-        if (count%2==0 && paused_task_list) {
+          
+        if (count%15==0) {
+            static int a = 1;
+            if (a == 1) {
+                a = 0;
+                printf("terminating task %u\n", current_task_TCB->task_id);
+                terminate_task();
+            }
+        }
+        else if (count%2==0 && paused_task_list) {
             printf("unblock ");
             unblock_task(container_of(paused_task_list, struct thread_control_block, tcb_list));
         }
         else if (count%7==0) {
             if (list_size(paused_task_list) <3) {
                 printf("block ");
-                block_task(PAUSED, NULL);                
+                block_task(PAUSED);                
             }
         }
 
@@ -190,7 +198,7 @@ void test_task(void) {
         else if (count%27==0) {
             printf("useless sleep %u ", current_task_TCB->task_id);
             nano_sleep_until(get_timer_count() - 1);
-        }  
+        }
 
     }
 }

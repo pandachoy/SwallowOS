@@ -9,7 +9,7 @@
 #define offset_of(type, member) \
     (uint64_t)&(((type *)0)->member)
 
-#define TIME_SLICE_LENGTH     1000
+#define TIME_SLICE_LENGTH     20000
 
 #define TCB_MEM_SIZE 1024
 static char tcb_mem[TCB_MEM_SIZE]; /* memory for tcb */
@@ -23,6 +23,7 @@ struct thread_control_block *current_task_TCB = NULL;
 struct list_head *ready_tcb_list = NULL;
 struct list_head *paused_task_list = NULL;
 struct list_head *sleeping_task_list = NULL;
+struct list_head *terminated_task_list = NULL;
 unsigned long last_count = 0;
 
 /* for task postpone */
@@ -60,6 +61,27 @@ void kernel_idle_work(void) {
 }
 struct thread_control_block *kernel_idle_task = NULL;
 
+void kernel_clean_work(void) {
+    struct thread_control_block *task = NULL;
+    lock_stuff();
+
+    while (terminated_task_list != NULL) {
+        task = container_of(terminated_task_list, struct thread_control_block, tcb_list);
+        if (terminated_task_list == terminated_task_list->next)
+            terminated_task_list = NULL;
+        else {
+            terminated_task_list = terminated_task_list->next;
+            list_del(&task->tcb_list);
+        }
+        printf("task %u terminated\n", task->task_id);
+        kfree_frame(task->rsp0-PAGE_SIZE);
+        kfree(task);
+    }
+    block_task(PAUSED);
+    unlock_stuff();
+}
+struct thread_control_block *kernel_clean_task = NULL;
+
 static void task_start_up() {
     unlock_scheduler();
 }
@@ -78,6 +100,11 @@ void init_scheduler(void) {
     current_task_TCB = kernel_idle_task;
     last_count = get_timer_count();
     time_slice_remaining = TIME_SLICE_LENGTH;
+
+    kernel_clean_task = create_task(kernel_clean_work);
+    ready_tcb_list = NULL;
+    paused_task_list = &kernel_clean_task->tcb_list;
+    INIT_LIST_HEAD(paused_task_list);
 }
 
 #define PUSH_STACK(s, v) \
@@ -119,6 +146,8 @@ struct thread_control_block *create_task(void (*ent)) {
 
 void schedule() {
     if (postpone_task_switches_counter != 0) {
+        /* 此处流程通常是因为之前调用了lock_stuff，此处会跳过当前schedule，推迟到unblock_stuff中的schedule */
+        /* 此处目的是上下文切换与调度的分离 */
         task_switches_postponed_flag = 1;
         return;
     }
@@ -168,7 +197,7 @@ void unlock_scheduler() {
     }
 }
 
-void block_task(state_t reason, void *data) {
+void block_task(state_t reason) {
     lock_scheduler();
     if (current_task_TCB == kernel_idle_work) {
         unlock_scheduler();
@@ -179,19 +208,14 @@ void block_task(state_t reason, void *data) {
     struct list_head **current_task_list = NULL;
     switch (reason)
     {
-    case PAUSED:
+    case PAUSED:             /* 被阻塞的任务 */
         current_task_list = &paused_task_list;
         break;
-    case SLEEPING:
-        {
-            uint64_t when = *(uint64_t*)data;
-            if (when < get_timer_count()) {
-                unlock_scheduler();
-                return;
-            }
-            current_task_TCB->sleep_expiry = when;
-        }
+    case SLEEPING:           /* 休眠的任务 */
         current_task_list = &sleeping_task_list;
+        break;
+    case TERMINATED:         /* 被终止的任务 */
+        current_task_list = &terminated_task_list;
         break;
     default:
         unlock_scheduler();
@@ -258,20 +282,23 @@ void unlock_stuff(void) {
 }
 
 void nano_sleep_until(uint64_t when) {
-    /* make sure when not already reached */
-    // if (when < get_timer_count())
-    //     return;
 
-    // lock_stuff();
+    lock_stuff();
 
-    // if (when < get_timer_count()) {
-    //     unlock_stuff();
-    //     return;
-    // }
+    if (when < get_timer_count()) {
+        unlock_stuff();
+        return;
+    }
+    current_task_TCB->sleep_expiry = when;
+    block_task(SLEEPING);
+    unlock_stuff();
+}
 
-    // current_task_TCB->sleep_expiry = when;
-    // unlock_stuff();
-    block_task(SLEEPING, (void*)&when);
+void terminate_task(void) {
+    lock_stuff();
+    unblock_task(kernel_clean_task);
+    block_task(TERMINATED);
+    unlock_stuff();
 }
 
 // 定义一个函数，用于定时器处理程序中的任务钩子
