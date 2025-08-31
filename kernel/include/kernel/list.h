@@ -12,6 +12,8 @@
 #define list_for_each(pos, head) \
     for (pos = (head)->next; pos !=(head); pos = pos->next)
 
+#define is_last_entry(h) ((h)->next==(h))
+
 struct list_head {
     struct list_head *next, *prev;
 };

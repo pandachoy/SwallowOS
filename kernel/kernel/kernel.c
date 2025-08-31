@@ -10,6 +10,7 @@
 #include <kernel/page.h>
 #include <kernel/list.h>
 #include <kernel/mm.h>
+#include <kernel/semaphore.h>
 #include "../arch/x86_64/pagemanager.h"
 #include "../arch/x86_64/task.h"
 
@@ -103,14 +104,17 @@ void test_helloworld() {
 
 /* test task */
 unsigned char ch_index = 0;
+
 extern int irq_disable_counter;
 extern int postpone_task_switches_counter;
 extern struct list_head *ready_tcb_list;
 extern struct list_head *paused_task_list;
 extern struct list_head *sleeping_task_list;
 extern unsigned long time_slice_remaining;
+
 int block_status = 1;
 extern unsigned long get_timer_count();
+
 void print_list(struct list_head *l) {
     struct list_head *p = l;
     printf("(");
@@ -122,6 +126,7 @@ void print_list(struct list_head *l) {
     }
     printf(") ");
 }
+
 static unsigned int list_size(struct list_head *list) {
     // printf("[inner %u]", list);
     if (!list)
@@ -135,6 +140,10 @@ static unsigned int list_size(struct list_head *list) {
     }
     return size;
 }
+
+struct semaphore *smph = NULL;
+unsigned int smph_count = 0;
+
 void test_task(void) {
     char str[2] = { 0 };
     str[0] = 'A'; // + ch_index;
@@ -150,9 +159,11 @@ void test_task(void) {
             str[0] = 'A';
         char *pattern = "[%s %u %u %u] ";
         printf("[%u ] ", current_task_TCB->task_id);
-        print_list(sleeping_task_list);
-        print_list(ready_tcb_list);
-        print_list(paused_task_list);
+        // print_list(sleeping_task_list);
+        // print_list(ready_tcb_list);
+        // print_list(paused_task_list);
+        print_list(smph->waiting_task_list);
+        printf("smph->cur_count: %u ", smph->current_count);
         // printf("[outer %u]", ready_tcb_list);
         // list_size(ready_tcb_list);
         // printf("[after outer %u]", list_size(ready_tcb_list));
@@ -199,6 +210,16 @@ void test_task(void) {
             printf("useless sleep %u ", current_task_TCB->task_id);
             nano_sleep_until(get_timer_count() - 1);
         }
+        else {
+            smph_count = (smph_count+1) % 10;
+            if (smph_count < 5) {
+                printf("acquire %u ", current_task_TCB->task_id);
+                acquire_semaphore(smph);
+            } else {
+                printf("release %u ", current_task_TCB->task_id);
+                release_semaphore(smph);
+            }
+        }
 
     }
 }
@@ -218,6 +239,8 @@ void kernel_main(void) {
     for (unsigned int i = 0; i < 8; ++i) {
         create_task(test_task);
     }
+    smph = create_semaphore(2);
+
     sti();
     kernel_idle_work();
 

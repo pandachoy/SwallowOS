@@ -217,16 +217,21 @@ void block_task(state_t reason) {
     case TERMINATED:         /* 被终止的任务 */
         current_task_list = &terminated_task_list;
         break;
+    case WAITING_FOR_LOCK:
+        break;
     default:
         unlock_scheduler();
         return;
     }
 
-    if (!(*current_task_list)) {
-        *current_task_list = &current_task_TCB->tcb_list;
-        INIT_LIST_HEAD(*current_task_list);
-    } else
-        list_add_tail(&current_task_TCB->tcb_list, *current_task_list);
+    if (current_task_list) {
+        if (!(*current_task_list)) {
+            *current_task_list = &current_task_TCB->tcb_list;
+            INIT_LIST_HEAD(*current_task_list);
+        } else
+            list_add_tail(&current_task_TCB->tcb_list, *current_task_list);
+    }
+
     schedule();
     unlock_scheduler();
 }

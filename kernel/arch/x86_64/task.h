@@ -9,7 +9,8 @@ typedef enum {
     READY,
     PAUSED,
     SLEEPING,
-    TERMINATED
+    TERMINATED,
+    WAITING_FOR_LOCK
 } state_t;
 
 struct thread_control_block {
