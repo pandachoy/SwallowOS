@@ -8,6 +8,7 @@
 # Declare constants for GDT
 # Access bits
 .set PRESENT,  1<<7
+.set DPL_LOW,  1<<6 | 1<<5
 .set NOT_SYS,  1<<4
 .set EXEC,     1<<3
 .set DC,       1<<2
@@ -53,6 +54,28 @@ second_page_table:
         .skip 4096
 
 .section .lowdata, "aw"
+.global tss_entry
+.global tss_end
+.align 16
+tss_entry:
+.long 0                            # 保留
+.quad 0                            # rsp0 (内核栈指针，当用户态时发生中断，cpu会从此处取出内核栈指针)
+.quad 0                            # rsp1 (不使用)
+.quad 0                            # rsp2 (不使用)
+.quad 0                            # 保留
+.quad 0                            # IST1
+.quad 0                            # IST2
+.quad 0                            # IST3
+.quad 0                            # IST4
+.quad 0                            # IST5
+.quad 0                            # IST6
+.quad 0                            # IST7
+.quad 0                            # 保留
+.word 0                            # 保留
+.word tss_end - tss_entry          # 如果不使用IOPB，可设置为tss的大小
+tss_end:
+
+.section .lowdata, "aw"
 .code64
 gdt_base:
 gdt_null:
@@ -69,9 +92,40 @@ gdt_data:
         .byte PRESENT | NOT_SYS | RW
         .byte GRAN_4K | SZ_32 | 0xf
         .byte 0
+gdt_user_code_32:                                          # 兼容，64位时不起作用
+        .long 0xffff
+        .byte 0
+        .byte PRESENT | DPL_LOW | NOT_SYS | EXEC | RW
+        .byte GRAN_4K | LONG_MODE | 0xf
+        .byte 0
+gdt_user_data:
+        .long 0xffff
+        .byte 0
+        .byte PRESENT | DPL_LOW | NOT_SYS | RW
+        .byte GRAN_4K | LONG_MODE | 0xf
+        .byte 0
+gdt_user_code:
+        .long 0xffff
+        .byte 0
+        .byte PRESENT | DPL_LOW | NOT_SYS | EXEC | RW
+        .byte GRAN_4K | LONG_MODE | 0xf
+        .byte 0
 gdt_tss:
-        .long 0x00000068
-        .long 0x00CF8900
+gdt_tss_limit_1:
+        .word 0                            # limit1
+gdt_tss_base_1:
+        .word 0                            # base1
+gdt_tss_base_2:
+        .byte 0                            # base2
+gdt_tss_access:
+        .byte 0x89                         # tss有自己的access byte定义
+gdt_tss_limit_2:
+        .byte 0                            # limit2, G=0, DB=0, L=0，由于tss在.lowdata
+gdt_tss_base_3:
+        .byte 0                            # base3
+gdt_tss_base_4:
+        .long 0                            # base4，由于tss在.lowdata 32位，此处可直接赋0
+        .long 0                                            # 保留
 gdt_ptr:
         .word gdt_ptr - gdt_base
         .long gdt_base
@@ -84,6 +138,26 @@ gdt_ptr:
 .global _start
 .type _start, @function
 _start:
+set_tss:
+        # limit1
+        movl $(tss_end - tss_entry), %eax
+        movw %ax, gdt_tss_limit_1
+        # base1
+        movl $tss_entry, %eax
+        movw %ax, gdt_tss_base_1
+        # base2
+        shr $16, %eax
+        movb %al, gdt_tss_base_2
+        # limit2，此处G、DB、L均为0
+        movl $(tss_end - tss_entry), %eax
+        shr $16, %eax
+        movb %al, gdt_tss_limit_2
+        # base3
+        movl $tss_entry, %eax
+        shr $24, %eax
+        movb %al, gdt_tss_base_3
+
+set_page:
         movl $first_page_table, %edi 
         movl $0, %esi
 1:
@@ -94,7 +168,7 @@ _start:
         # Map physical address as "present, writable". Note that this maps
         # .text and .rodata as writable. Mind security and map them as non-writable.
         movl %esi, %edx
-        orl $0x003, %edx
+        orl $0x007, %edx  # P、R/W、U/S
         movl %edx, (%edi) # 把edx的值（被映射的地址，即加载地址）赋给edi所指地址（页表项）
 
 2:
@@ -107,19 +181,19 @@ _start:
 
 3:
         # Map VGA video memory to 0xC03FF000 as "present, writable".
-        movl $(0x000B8000 | 0x003), second_page_table + 511 * 8
-        movl $(first_page_table + 0x003), last_second_page_directory + 0 # 该场景下，虚拟地址与加载地址相同的section会映射到此
-        movl $(second_page_table + 0x003), last_second_page_directory + 1 * 8
+        movl $(0x000B8000 | 0x007), second_page_table + 511 * 8
+        movl $(first_page_table + 0x007), last_second_page_directory + 0 # 该场景下，虚拟地址与加载地址相同的section会映射到此
+        movl $(second_page_table + 0x007), last_second_page_directory + 1 * 8
 
         # 同时映射一个没有offset的页表
-        movl $(last_second_page_directory + 0x003), first_page_directory_ptr + 0
+        movl $(last_second_page_directory + 0x007), first_page_directory_ptr + 0
 
         # higher half 的页表，在最后一个pdpt的第510项
-        movl $(last_second_page_directory + 0x003), last_page_directory_ptr + 510 * 8
+        movl $(last_second_page_directory + 0x007), last_page_directory_ptr + 510 * 8
 
         # pml4
-        movl $(first_page_directory_ptr + 0x003), page_map_level4 + 0 * 8
-        movl $(last_page_directory_ptr + 0x003), page_map_level4 + 511 * 8
+        movl $(first_page_directory_ptr + 0x007), page_map_level4 + 0 * 8
+        movl $(last_page_directory_ptr + 0x007), page_map_level4 + 511 * 8
 
         movl %cr4, %eax
         orl $0b100000, %eax
@@ -147,6 +221,10 @@ break:
 .code32
 compat:
         lgdt gdt_ptr
+load_tss:
+        movw $0x30, %ax
+        ltr %ax
+
         jmp $0x08, $(real64 - 0xffffffff80000000)
 
 

@@ -73,7 +73,10 @@ switch_to_task:
     add %rcx, %rsi
     mov (%rsi), %rbx
 
-    # todo: adjust the esp0 field in the TSS
+    # adjust the rsp0 field in the TSS
+    mov $tss_entry, %rcx
+    add $0x04, %rcx           # rsp0 offset in tss
+    mov %rbx, (%rcx)
 
     # compare virtual address
     mov %cr3, %rcx

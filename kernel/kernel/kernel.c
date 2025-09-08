@@ -224,6 +224,21 @@ void test_task(void) {
     }
 }
 
+/* test ring3 */
+void print_hello() {
+    printf("hello, ring3\n");
+    for (unsigned int i=0; i<1e6; ++i);
+}
+void print_hello_ring0() {
+    __asm__ volatile ("movl $0x10, %eax;"
+                      "movw %ax, %ds;"
+                      "movw %ax, %es;"
+                      "movw %ax, %fs;"
+                      "movw %ax, %gs");
+    printf("hello, ring0\n");
+    while(1);
+}
+
 void kernel_main(void) {
     // load_gdt();
     terminal_initialize();
@@ -234,16 +249,12 @@ void kernel_main(void) {
     NMI_enable();
     NMI_disable();
 
-    /* tasks */
-    init_scheduler();
-    for (unsigned int i = 0; i < 8; ++i) {
-        create_task(test_task);
-    }
-    smph = create_semaphore(2);
-
-    sti();
-    kernel_idle_work();
-
+    /* set ring0 msr */
+    set_ring0_msr(print_hello_ring0);
+    
+    /* get to ring3 */
+    get_to_ring3(print_hello);
+    get_to_ring0();
 
     __asm__ volatile ("hlt");
 }
