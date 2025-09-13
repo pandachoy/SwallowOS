@@ -13,7 +13,9 @@
 #include <kernel/semaphore.h>
 #include "../arch/x86_64/pagemanager.h"
 #include "../arch/x86_64/task.h"
+#include "../arch/x86_64/cpu.h"
 
+#include "../../../libc/include/syscall.h"
 
 /* test helloworld */
 void test_helloworld() {
@@ -239,6 +241,21 @@ void print_hello_ring0() {
     while(1);
 }
 
+void user_work() {
+    for (unsigned int i = 0; i < 1e4; ++i) {
+        for (unsigned int i = 0; i < 1e5; ++i);
+        int res = read(5, 1024, 123);
+        printf("read ret: %d\n", res);
+        for (unsigned int i = 0; i < 1e5; ++i);
+        res = write(7, 512, 456);
+        printf("write ret: %d\n", res);
+    }
+}
+void user_work_wrapper() {
+    get_to_ring3(user_work);
+}
+extern void do_syscall();
+
 void kernel_main(void) {
     // load_gdt();
     terminal_initialize();
@@ -250,11 +267,10 @@ void kernel_main(void) {
     NMI_disable();
 
     /* set ring0 msr */
-    set_ring0_msr(print_hello_ring0);
-    
-    /* get to ring3 */
-    get_to_ring3(print_hello);
-    get_to_ring0();
+    set_ring0_msr(do_syscall);
+    init_scheduler();
+    struct thread_control_block *tcb = create_task(user_work_wrapper);
+    switch_to_task(tcb);
 
     __asm__ volatile ("hlt");
 }

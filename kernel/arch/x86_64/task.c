@@ -120,7 +120,7 @@ struct thread_control_block *create_task(void (*ent)) {
         /* init new task */
         new_task->task_id = ++task_id_counter;
         new_task->rsp0 = kalloc_frame() + PAGE_SIZE;
-        new_task->rsp =  new_task->rsp0;
+        new_task->rsp =  kalloc_frame() + PAGE_SIZE;
         new_task->cr3 = getcr3();
         new_task->state = READY;
         new_task->time_used = 0;
