@@ -242,15 +242,15 @@ void print_hello_ring0() {
 }
 
 void user_work() {
-    for (unsigned int i = 0; i < 1e4; ++i) {
-        for (unsigned int i = 0; i < 1e5; ++i);
-        int res = read(5, 1024, 123);
-        printf("read ret: %d\n", res);
-        for (unsigned int i = 0; i < 1e5; ++i);
-        res = write(7, 512, 456);
-        printf("write ret: %d\n", res);
+    while (1) {
+        for (unsigned int i = 0; i < 2e8; ++i);
+        uint64_t task_id = get_task_id();
+        uint64_t rsp0 = get_rsp0();
+        printf("hello, user work %u %u\n", task_id, rsp0);
     }
+    
 }
+
 void user_work_wrapper() {
     get_to_ring3(user_work);
 }
@@ -269,8 +269,12 @@ void kernel_main(void) {
     /* set ring0 msr */
     set_ring0_msr(do_syscall);
     init_scheduler();
-    struct thread_control_block *tcb = create_task(user_work_wrapper);
-    switch_to_task(tcb);
+    for (unsigned int i = 0; i < 3; ++i) {
+        struct thread_control_block *tcb = create_task(user_work_wrapper);
+    }
+    sti();
+    kernel_idle_work();
+    
 
     __asm__ volatile ("hlt");
 }

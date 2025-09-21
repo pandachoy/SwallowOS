@@ -36,8 +36,8 @@ void terminal_putentryat(unsigned char c, uint8_t color, size_t x, size_t y) {
     terminal_buffer[index] = vga_entry(c, color);
 }
 
-void terminal_scroll(int line) {
-    int loop;
+void terminal_scroll(uint64_t line) {
+    uint64_t loop;
     char c;
 
     for (loop = line * (VGA_WIDTH * 2) + VGA_MEMORY; loop < (line + 1) * (VGA_WIDTH * 2) + VGA_MEMORY; ++loop) {
@@ -47,7 +47,7 @@ void terminal_scroll(int line) {
 }
 
 void terminal_delete_last_line() {
-    int x, *ptr;
+    uint64_t x, *ptr;
 
     for (x = 0; x < VGA_WIDTH * 2; ++x) {
         ptr = VGA_MEMORY + (VGA_WIDTH * 2) * (VGA_HEIGHT -1) + x;
@@ -56,7 +56,7 @@ void terminal_delete_last_line() {
 }
 
 void terminal_putchar(char c) {
-    int line;
+    uint64_t line;
     unsigned char uc = c;
 
     if (c == '\n')

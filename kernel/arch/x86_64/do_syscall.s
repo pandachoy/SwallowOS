@@ -10,48 +10,36 @@ do_syscall:
     movw %bx, %gs
 
     /* save user stack */
-    mov $current_task_TCB, %rbx
-    mov (%rbx), %rbx
-    mov $TCB_rsp_offset, %r11
-    mov (%r11), %r11
-    add %r11, %rbx
-    mov %rsp, (%rbx)
+    mov current_task_TCB(%rip), %rbx
+    # mov (%rbx), %rbx
+    mov TCB_rsp_offset(%rip), %r12
+    # mov (%r12), %r12
+    # add %r12, %rbx
+    mov %rsp, (%rbx, %r12, 1)
 
     /* load kernel stack */
-    mov $current_task_TCB, %rbx
-    mov (%rbx), %rbx
-    mov $TCB_rsp0_offset, %r11
-    mov (%r11), %r11
-    add %r11, %rbx
-    mov (%rbx), %rsp
+    mov TCB_rsp0_offset(%rip), %r12
+    mov (%rbx, %r12, 1), %rsp
 
     /* syscall number is stored in rax */
     push %rcx
     mov %r10, %rcx
     mov %rax, %rbx
     shl $3, %rbx
-    mov $syscalls, %r11
-    add %r11, %rbx
+    mov $syscalls, %r12
+    add %r12, %rbx
     /* syscall result will be stored in rax */
     call (%rbx)
     pop %rcx
 
     /* save kernel stack */
-    mov $current_task_TCB, %rbx
-    mov (%rbx), %rbx
-    mov $TCB_rsp0_offset, %r11
-    mov (%r11), %r11
-    add %r11, %rbx
-    mov %rsp, (%rbx)
+    mov current_task_TCB(%rip), %rbx
+    mov TCB_rsp0_offset(%rip), %r12
+    mov %rsp, (%rbx, %r12, 1)
 
     /* load user stack */
-    mov $current_task_TCB, %rbx
-    mov (%rbx), %rbx
-    mov $TCB_rsp_offset, %r11
-    mov (%r11), %r11
-    add %r11, %rbx
-    mov (%rbx), %rsp
-
+    mov TCB_rsp_offset(%rip), %r12
+    mov (%rbx, %r12, 1), %rsp
 
     /* restore user regs */
     movl $(0x20 | 3), %ebx             # user data Segment
@@ -60,6 +48,6 @@ do_syscall:
     movw %bx, %fs
     movw %bx, %gs
 
-    mov $0x002, %r11                   # switch IF for now
+    # mov $0x002, %r11                   # switch IF for now
     /* rip already stored in rcx */
     sysretq

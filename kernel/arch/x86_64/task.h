@@ -16,7 +16,8 @@ typedef enum {
 struct thread_control_block {
     unsigned long task_id;
     void* rsp;                              /* the task's kernel stack */
-    void* rsp0;                             /* top of kernel stack */ 
+    void* tss_rsp0;                         /* top of kernel stack to set on tss->rsp0*/ 
+    void* rsp0;                             /* kernel stack */
     uint32_t cr3;                              /* the task's virtual address space*/
     // struct thread_control_block *next;      /* next task field */
     state_t state;                          /* state field */

@@ -54,11 +54,11 @@ second_page_table:
         .skip 4096
 
 .section .lowdata, "aw"
-.global tss_entry
-.global tss_end
+.global tss_rsp0
 .align 16
 tss_entry:
 .long 0                            # 保留
+tss_rsp0:
 .quad 0                            # rsp0 (内核栈指针，当用户态时发生中断，cpu会从此处取出内核栈指针)
 .quad 0                            # rsp1 (不使用)
 .quad 0                            # rsp2 (不使用)

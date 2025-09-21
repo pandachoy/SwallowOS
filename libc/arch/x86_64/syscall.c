@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <stdint.h>
 #include "../../include/syscall.h"
 
 extern int libc_do_syscall(unsigned int nr,
@@ -15,4 +16,12 @@ int read(int fd, size_t size, char *buffer) {
 
 int write(int fd, size_t size, char *buffer) {
     return libc_do_syscall(1, fd, size, buffer, NULL, NULL, NULL);
+}
+
+uint64_t get_task_id() {
+    return libc_do_syscall(2, NULL, NULL, NULL, NULL, NULL, NULL);
+}
+
+uint64_t get_rsp0() {
+    return libc_do_syscall(3, NULL, NULL, NULL, NULL, NULL, NULL);
 }

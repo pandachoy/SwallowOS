@@ -1,6 +1,7 @@
 .global get_to_ring3
 .type get_to_ring3, @function
 get_to_ring3:
+    cli
     movl $(0x20 | 3), %eax             # user data Segment
     movw %ax, %ds
     movw %ax, %es
@@ -17,7 +18,22 @@ get_to_ring3:
     wrmsr
 
     mov %rdi, %rcx             # to load into rip
-    mov $0x002, %r11           # to load into eflags, no IF for test
+    # mov $0x002, %r11           # to load into eflags, no IF for test
+    or $(1 << 9), %r11
+
+    # save rsp to tss_rsp0
+    # mov %rsp, tss_rsp0
+
+    # save current_task_TCB->tss_rsp0 to tss_rsp0
+    mov current_task_TCB(%rip), %rsi
+    mov TCB_tss_rsp0_offset(%rip), %rdx
+    mov (%rsi, %rdx, 1), %rdx
+    mov %rdx, tss_rsp0
+
+    # load current_task_TCB->rsp
+    mov TCB_rsp_offset(%rip), %rdx
+    mov (%rsi, %rdx, 1), %rsp
+
     sysretq
 
 .global set_ring0_msr
@@ -38,6 +54,13 @@ set_ring0_msr:
     mov %edi, %eax
     mov $0xc0000082, %rcx
     wrmsr
+
+    /* clear interrupt enable flag */  
+    mov $(1 << 9), %eax
+    xorl %edx, %edx
+    mov $0xC0000084, %rcx
+    wrmsr
+
     ret
 
 .global get_to_ring0

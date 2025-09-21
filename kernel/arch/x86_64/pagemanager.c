@@ -58,7 +58,7 @@ pageframe_t kalloc_frame_init() {
         }
     }
     set_frame_map(i, 1);
-    return (startframe + (i * PAGE_SIZE)); /* 0x1000(4kb) */
+    return ((char*)startframe + (i * PAGE_SIZE)); /* 0x1000(4kb) */
 }
 
 static uint64_t *pre_frames[PRE_ALLOCATING_NUM] = {0};

@@ -24,59 +24,34 @@ switch_to_task:
     call update_time_used
 
     # save esp to current_task_TCB
-    mov $current_task_TCB, %rsi
-    mov (%rsi), %rsi
-    mov $TCB_rsp_offset, %rcx
-    mov (%rcx), %rcx
-    add %rcx, %rsi
-    mov %rsp, (%rsi)
+    mov current_task_TCB(%rip), %rsi
+    mov TCB_rsp0_offset(%rip), %rcx
+    mov %rsp, (%rsi, %rcx, 1)
 
     # set current task's state
-    mov $current_task_TCB, %rsi
-    mov (%rsi), %rsi
-    mov $TCB_state_offset, %rcx
-    mov (%rcx), %rcx
-    add %rcx, %rsi
-    mov $READY, %ecx
-    mov %ecx, (%rsi)
+    mov TCB_state_offset(%rip), %rcx
+    mov $READY, (%rsi, %rcx, 1)
 
     # load next task's state, next task saved in rdi
     mov %rdi, current_task_TCB
+
     # set next task's state
-    mov $current_task_TCB, %rsi
-    mov (%rsi), %rsi
-    mov $TCB_state_offset, %rcx
-    mov (%rcx), %rcx
-    add %rcx, %rsi
-    mov $RUNNING, %ecx
-    mov %ecx, (%rsi)
+    mov current_task_TCB(%rip), %rsi
+    mov TCB_state_offset(%rip), %rcx
+    mov $RUNNING, (%rsi, %rcx, 1)
 
-    # load rsp
-    mov $current_task_TCB, %rsi
-    mov (%rsi), %rsi
-    mov $TCB_rsp_offset, %rcx
-    mov (%rcx), %rcx
-    add %rcx, %rsi
-    mov (%rsi), %rsp
-    # load cr3
-    mov $current_task_TCB, %rsi
-    mov (%rsi), %rsi
-    mov $TCB_cr3_offset, %rcx
-    mov (%rcx), %rcx
-    add %rcx, %rsi
-    mov (%rsi), %rax
     # load rsp0
-    mov $current_task_TCB, %rsi
-    mov (%rsi), %rsi
-    mov $TCB_rsp0_offset, %rcx
-    mov (%rcx), %rcx
-    add %rcx, %rsi
-    mov (%rsi), %rbx
+    mov TCB_rsp0_offset(%rip), %rcx
+    mov (%rsi, %rcx, 1), %rsp
+    
+    # read cr3
+    mov TCB_cr3_offset(%rip), %rcx
+    mov (%rsi, %rcx, 1), %rax
 
-    # adjust the rsp0 field in the TSS
-    mov $tss_entry, %rcx
-    add $0x04, %rcx           # rsp0 offset in tss
-    mov %rbx, (%rcx)
+    # save current_task_TCB->tss_rsp0 to tss_rsp0
+    mov TCB_tss_rsp0_offset(%rip), %rcx
+    mov (%rsi, %rcx, 1), %rcx
+    mov %rcx, tss_rsp0
 
     # compare virtual address
     mov %cr3, %rcx
@@ -84,6 +59,9 @@ switch_to_task:
     je .doneVAS
     mov %rax, %cr3
 .doneVAS:
+
+#.update_tss_rsp0:
+    #mov %rsp, tss_rsp0
 
     pop %rsi
     pop %rcx

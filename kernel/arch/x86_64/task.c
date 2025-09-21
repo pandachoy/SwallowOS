@@ -9,13 +9,14 @@
 #define offset_of(type, member) \
     (uint64_t)&(((type *)0)->member)
 
-#define TIME_SLICE_LENGTH     20000
+#define TIME_SLICE_LENGTH     5000
 
 #define TCB_MEM_SIZE 1024
 static char tcb_mem[TCB_MEM_SIZE]; /* memory for tcb */
 
 const uint64_t TCB_rsp_offset = offset_of(struct thread_control_block, rsp);
 const uint64_t TCB_rsp0_offset = offset_of(struct thread_control_block, rsp0);
+const uint64_t TCB_tss_rsp0_offset = offset_of(struct thread_control_block, tss_rsp0);
 const uint64_t TCB_state_offset = offset_of(struct thread_control_block, state);
 const uint64_t TCB_cr3_offset = offset_of(struct thread_control_block, cr3);
 
@@ -74,7 +75,8 @@ void kernel_clean_work(void) {
             list_del(&task->tcb_list);
         }
         printf("task %u terminated\n", task->task_id);
-        kfree_frame(task->rsp0-PAGE_SIZE);
+        kfree_frame((pageframe_t)(((uint64_t)task->rsp0) & 0xFFFFFFFFFFFFF000));  /* locate the start of page frame */
+        kfree_frame((pageframe_t)(((uint64_t)task->rsp) & 0xFFFFFFFFFFFFF000));  /* locate the start of page frame */
         kfree(task);
     }
     block_task(PAUSED);
@@ -93,7 +95,7 @@ void init_scheduler(void) {
     kernel_idle_task = (struct thread_control_block*)kmalloc(sizeof(struct thread_control_block));
     kernel_idle_task->task_id = 0;
     kernel_idle_task->rsp0 = 0; // kalloc_frame() + PAGE_SIZE;
-    kernel_idle_task->rsp =  current_task_TCB->rsp0;
+    kernel_idle_task->rsp =  0;
     kernel_idle_task->cr3 = getcr3();
     kernel_idle_task->state = RUNNING;
     kernel_idle_task->time_used = 0;
@@ -120,6 +122,7 @@ struct thread_control_block *create_task(void (*ent)) {
         /* init new task */
         new_task->task_id = ++task_id_counter;
         new_task->rsp0 = kalloc_frame() + PAGE_SIZE;
+        new_task->tss_rsp0 = new_task->rsp0;
         new_task->rsp =  kalloc_frame() + PAGE_SIZE;
         new_task->cr3 = getcr3();
         new_task->state = READY;
@@ -127,12 +130,12 @@ struct thread_control_block *create_task(void (*ent)) {
 
 
         /* init stack */
-        PUSH_STACK(new_task->rsp, ent); /* ret function */
-        PUSH_STACK(new_task->rsp, task_start_up);
-        PUSH_STACK(new_task->rsp, 0);   /* rax */
-        PUSH_STACK(new_task->rsp, 0);   /* rbx */
-        PUSH_STACK(new_task->rsp, 0);   /* rcx */
-        PUSH_STACK(new_task->rsp, 0);   /* rsi */
+        PUSH_STACK(new_task->rsp0, ent); /* ret function */
+        PUSH_STACK(new_task->rsp0, task_start_up);
+        PUSH_STACK(new_task->rsp0, 0);   /* rax */
+        PUSH_STACK(new_task->rsp0, 0);   /* rbx */
+        PUSH_STACK(new_task->rsp0, 0);   /* rcx */
+        PUSH_STACK(new_task->rsp0, 0);   /* rsi */
 
         /* add to ready list */
         if (!ready_tcb_list) {
