@@ -1,5 +1,5 @@
 #include "kernel/semaphore.h"
-#include "kernel/mm.h"
+#include "kernel/malloc.h"
 #include "pagemanager.h"
 #include "task.h"
 

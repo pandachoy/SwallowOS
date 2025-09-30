@@ -9,11 +9,13 @@
 #include <kernel/timer.h>
 #include <kernel/page.h>
 #include <kernel/list.h>
-#include <kernel/mm.h>
+#include <kernel/malloc.h>
 #include <kernel/semaphore.h>
 #include "../arch/x86_64/pagemanager.h"
 #include "../arch/x86_64/task.h"
 #include "../arch/x86_64/cpu.h"
+#include "../arch/x86_64/pgtable.h"
+#include "../multiboot/multiboot.h"
 
 #include "../../../libc/include/syscall.h"
 
@@ -256,6 +258,40 @@ void user_work_wrapper() {
 }
 extern void do_syscall();
 
+/* test physical memory */
+extern volatile uint64_t npages;
+extern void *p_multiboot_info;
+void kernel_main(void);
+void print_valid_memory(multiboot_info_t *mbd) {
+    if(!(mbd->flags >> 6 & 0x1)) {
+        printf("invalid memory map");
+        return;
+    }
+
+    for(unsigned int i = 0; i < mbd->mmap_length; i += sizeof(multiboot_memory_map_t)) {
+        multiboot_memory_map_t *mmmt = (multiboot_memory_map_t*) (mbd->mmap_addr + i);
+        printf("Start Addr: %u | Length: %u | Size: %u | Type: %d\n",
+            mmmt->addr, mmmt->len, mmmt->size, mmmt->type);
+        
+        if (mmmt->type == MULTIBOOT_MEMORY_AVAILABLE) {
+            printf("This mem map is available\n");
+        }
+    }
+}
+#include "../arch/x86_64/ram.h"
+void test_pm(void) {
+    printf("kernel main: %u\n", kernel_main);
+    print_valid_memory(p_multiboot_info);
+
+    kalloc_frame_init();
+    printf("npages: %u\n", npages);
+    printf("ram_start: %u, ram_end: %u\n", ram_start, ram_end);
+
+    printf("kernel_main physaddr: %u\n", get_physaddr(&page_map_level4, kernel_main));
+
+}
+
+extern void *page_map_level4;
 void kernel_main(void) {
     // load_gdt();
     terminal_initialize();
@@ -265,16 +301,7 @@ void kernel_main(void) {
     timer_init();
     NMI_enable();
     NMI_disable();
-
-    /* set ring0 msr */
-    set_ring0_msr(do_syscall);
-    init_scheduler();
-    for (unsigned int i = 0; i < 3; ++i) {
-        struct thread_control_block *tcb = create_task(user_work_wrapper);
-    }
-    sti();
-    kernel_idle_work();
-    
+    test_pm();
 
     __asm__ volatile ("hlt");
 }

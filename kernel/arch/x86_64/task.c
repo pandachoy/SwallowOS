@@ -1,7 +1,7 @@
 #include "kernel/list.h"
 #include "kernel/page.h"
 #include "kernel/timer.h"
-#include "kernel/mm.h"
+#include "kernel/malloc.h"
 #include "kernel/tty.h"
 #include "pagemanager.h"
 #include "task.h"

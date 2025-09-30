@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include <kernel/mm.h>
+#include <kernel/malloc.h>
 #include <kernel/tty.h>
 #include <kernel/page.h>
 #include "pagemanager.h"

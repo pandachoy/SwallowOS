@@ -38,18 +38,25 @@ stack_top:
 .section .lowbss, "aw", @nobits
 .code32
 .align 4096
+.global page_map_level4
 page_map_level4:
         .skip 4096                # size 512 * 8, above the same size
+.global first_page_directory_ptr
 first_page_directory_ptr:
         .skip 4096
+.global last_page_directory_ptr
 last_page_directory_ptr:
         .skip 4096
+.global last_first_page_directory
 last_first_page_directory:    # 倒数第一的pdt
         .skip 4096
+.global last_second_page_directory
 last_second_page_directory:   # 倒数第二的pdt
         .skip 4096
+.global first_page_table
 first_page_table:
         .skip 4096
+.global second_page_table
 second_page_table:
         .skip 4096
 
@@ -130,7 +137,11 @@ gdt_ptr:
         .word gdt_ptr - gdt_base
         .long gdt_base
 
-# Further page tables may be required if the kernel grows beyond 3 MiB.
+.section .lowdata, "aw"
+.global p_multiboot_info
+.align 64
+p_multiboot_info:
+        .quad 0
 
 # The kernel entry point.
 .section .multiboot.text, "a"
@@ -138,6 +149,8 @@ gdt_ptr:
 .global _start
 .type _start, @function
 _start:
+        # load address of struct multiboot_info 
+        mov %ebx, p_multiboot_info
 set_tss:
         # limit1
         movl $(tss_end - tss_entry), %eax

@@ -1,10 +1,13 @@
 
 #include <stddef.h>
+#include "constant.h"
+#include "ram.h"
 #include "pagemanager.h"
-#include <kernel/page.h>  
+#include "pgtable.h"
+#include <kernel/page.h>
+
 
 /* 页分配有很多方法，如bitmap、stack/list、buddy alocations等，这里用最简单的bitmap */
-
 #define MEM_END       (0xffffffff80000000 + 512 * 4096)               /* 暂时只讨论当前映射的一个页目录项 */
 #define UINT64_BITS                           64
 #define PRE_ALLOCATING_NUM                    20
@@ -34,18 +37,21 @@ static void set_frame_map(unsigned int index, uint64_t val) {
 pageframe_t kalloc_frame_init() {
     uint64_t i = 0;
 
+    /* init ram */
+    init_ram();
+
     /* frame_map要sizeof(page_status)对齐 */
     if (!frame_map) {
         frame_map = (uint64_t *)(&_kernel_end + 1);
         /* 在frame_map后面填充其数据以及确定startframe */
-        /* 首先要选一个合适的npages，设置为一个接近值x，则(x*4096 + x / 64) < (MEM_END -  frame_map)， 解出 x = (MEM_END - frame_map) / (4096 + 1/64), 实际上除数可以算成4097来估算 */
-        npages = (MEM_END - (uint64_t)frame_map) / (PAGE_SIZE + 1);
+        /* 首先要选一个合适的npages，设置为一个接近值x，则(x*4096 + x / 64) < (ram_end -  frame_map)， 解出 x = (ram_end - frame_map) / (4096 + 1/64), 实际上除数可以算成4097来估算 */
+        npages = (ram_end + HIGHER_HALF_OFFSET - (uint64_t)frame_map) / (PAGE_SIZE + 1);
         /* 得到npages，即可容易算出startframe，注意4k对齐 */
         startframe = frame_map + (npages / UINT64_BITS);
         if ((uint64_t)startframe % PAGE_SIZE != 0)
             startframe = (uint64_t*)(((uint64_t)startframe / PAGE_SIZE + 1) * PAGE_SIZE);
         /* 检查页面是否超出内存，注意这里要考虑到VGA video占用的页，所以在比较的时候要减去4096 */
-        while (startframe + PAGE_SIZE * npages > MEM_END - PAGE_SIZE)
+        while (startframe + PAGE_SIZE * npages > ram_end + HIGHER_HALF_OFFSET - PAGE_SIZE)
             npages--;
         for (uint64_t *p = frame_map; p < startframe; ++p)
             *p = 0;
@@ -86,4 +92,9 @@ void kfree_frame(pageframe_t a) {
 
     unsigned int index = (a - startframe) / PAGE_SIZE;          /* get offset */
     set_frame_map(index, 0);
+}
+
+
+struct page_alloc alloc_pages(size_t size) {
+
 }
