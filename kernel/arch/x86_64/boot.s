@@ -41,24 +41,28 @@ stack_top:
 .global page_map_level4
 page_map_level4:
         .skip 4096                # size 512 * 8, above the same size
-.global first_page_directory_ptr
-first_page_directory_ptr:
+kernel_page_directory_ptr:
         .skip 4096
-.global last_page_directory_ptr
-last_page_directory_ptr:
+vga_page_directory:
         .skip 4096
-.global last_first_page_directory
-last_first_page_directory:    # 倒数第一的pdt
-        .skip 4096
-.global last_second_page_directory
-last_second_page_directory:   # 倒数第二的pdt
-        .skip 4096
-.global first_page_table
-first_page_table:
-        .skip 4096
-.global second_page_table
-second_page_table:
-        .skip 4096
+# .global first_page_directory_ptr
+# first_page_directory_ptr:
+#         .skip 4096
+# .global last_page_directory_ptr
+# last_page_directory_ptr:
+#         .skip 4096
+# .global last_first_page_directory
+# last_first_page_directory:    # 倒数第一的pdt
+#         .skip 4096
+# .global last_second_page_directory
+# last_second_page_directory:   # 倒数第二的pdt
+#         .skip 4096
+# .global first_page_table
+# first_page_table:
+#         .skip 4096
+# .global second_page_table
+# second_page_table:
+#         .skip 4096
 
 .section .lowdata, "aw"
 .global tss_rsp0
@@ -170,43 +174,55 @@ set_tss:
         shr $24, %eax
         movb %al, gdt_tss_base_3
 
-set_page:
-        movl $first_page_table, %edi 
-        movl $0, %esi
-1:
+# set_page:
+#         movl $first_page_table, %edi 
+#         movl $0, %esi
+# 1:
 
-        cmpl $(first_page_table + 4096 * 2), %edi     # 判断复制终点，这里复制两个pt的长度
-        jge 3f
+#         cmpl $(first_page_table + 4096 * 2), %edi     # 判断复制终点，这里复制两个pt的长度
+#         jge 3f
 
-        # Map physical address as "present, writable". Note that this maps
-        # .text and .rodata as writable. Mind security and map them as non-writable.
-        movl %esi, %edx
-        orl $0x007, %edx  # P、R/W、U/S
-        movl %edx, (%edi) # 把edx的值（被映射的地址，即加载地址）赋给edi所指地址（页表项）
+#         # Map physical address as "present, writable". Note that this maps
+#         # .text and .rodata as writable. Mind security and map them as non-writable.
+#         movl %esi, %edx
+#         orl $0x007, %edx  # P、R/W、U/S
+#         movl %edx, (%edi) # 把edx的值（被映射的地址，即加载地址）赋给edi所指地址（页表项）
 
-2:
-        # Size of page is 4096 bytes.
-        addl $4096, %esi
-        # Size of entries in boot_page_table1 is 4 bytes.
-        addl $8, %edi                                  # 注意，64位页表单个项长度为8
-        # Loop to the next entry if we haven't finished.
-        loop 1b
+# 2:
+#         # Size of page is 4096 bytes.
+#         addl $4096, %esi
+#         # Size of entries in boot_page_table1 is 4 bytes.
+#         addl $8, %edi                                  # 注意，64位页表单个项长度为8
+#         # Loop to the next entry if we haven't finished.
+#         loop 1b
 
-3:
-        # Map VGA video memory to 0xC03FF000 as "present, writable".
-        movl $(0x000B8000 | 0x007), second_page_table + 511 * 8
-        movl $(first_page_table + 0x007), last_second_page_directory + 0 # 该场景下，虚拟地址与加载地址相同的section会映射到此
-        movl $(second_page_table + 0x007), last_second_page_directory + 1 * 8
+# 3:
+#         # Map VGA video memory to 0xC03FF000 as "present, writable".
+#         movl $(0x000B8000 | 0x007), second_page_table + 511 * 8
+#         movl $(first_page_table + 0x007), last_second_page_directory + 0 # 该场景下，虚拟地址与加载地址相同的section会映射到此
+#         movl $(second_page_table + 0x007), last_second_page_directory + 1 * 8
 
-        # 同时映射一个没有offset的页表
-        movl $(last_second_page_directory + 0x007), first_page_directory_ptr + 0
+#         # 同时映射一个没有offset的页表
+#         movl $(last_second_page_directory + 0x007), first_page_directory_ptr + 0
 
-        # higher half 的页表，在最后一个pdpt的第510项
-        movl $(last_second_page_directory + 0x007), last_page_directory_ptr + 510 * 8
+#         # higher half 的页表，在最后一个pdpt的第510项
+#         movl $(last_second_page_directory + 0x007), last_page_directory_ptr + 510 * 8
+
+#         # pml4
+#         movl $(first_page_directory_ptr + 0x007), page_map_level4 + 0 * 8
+#         movl $(last_page_directory_ptr + 0x007), page_map_level4 + 511 * 8
+
+        # vga pd
+        movl $0x087, vga_page_directory + 0       # PS=1
+        # kernel pdptr
+        movl $0x087, kernel_page_directory_ptr + 0               # PS=1
+        movl $0x087, kernel_page_directory_ptr + 510 * 8         # PS=1
+        movl $(vga_page_directory + 0x007), kernel_page_directory_ptr + 511 * 8
 
         # pml4
-        movl $(first_page_directory_ptr + 0x007), page_map_level4 + 0 * 8
-        movl $(last_page_directory_ptr + 0x007), page_map_level4 + 511 * 8
+        movl $(kernel_page_directory_ptr + 0x007), page_map_level4 + 0 * 8
+        movl $(kernel_page_directory_ptr + 0x007), page_map_level4 + 511 * 8
+
 
         movl %cr4, %eax
         orl $0b100000, %eax

@@ -10,15 +10,15 @@
 
 /* mpl4 */
 extern void *page_map_level4;
-/* pdptr */
-extern void *first_page_directory_ptr; /* identity mapping pdtr */
-extern void *last_page_directory_ptr;
-/* pd */
-extern void *last_first_page_directory;
-extern void *last_second_page_directory;
-/* pt */
-extern void *first_page_table;
-extern void *second_page_table;
+// /* pdptr */
+// extern void *first_page_directory_ptr; /* identity mapping pdtr */
+// extern void *last_page_directory_ptr;
+// /* pd */
+// extern void *last_first_page_directory;
+// extern void *last_second_page_directory;
+// /* pt */
+// extern void *first_page_table;
+// extern void *second_page_table;
 
 void *get_physaddr(uint64_t *pml4, void *virtualaddr);
 

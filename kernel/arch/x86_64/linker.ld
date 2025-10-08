@@ -2,10 +2,7 @@ ENTRY (_start)
 
 SECTIONS
 {
-        . = 0x00100000;
-        /* The kernel will live at 3GB + 1MB in the virtual address space, */
-        /* which will be mapped to 1MB in the physical address space. */
-        /* Note that we page-align the sections. */
+        . = 0x00200000;
 
         _kernel_start = .;
                 /* 加载地址和虚拟地址相同 */
