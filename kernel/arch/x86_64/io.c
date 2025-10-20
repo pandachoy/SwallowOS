@@ -18,6 +18,6 @@ uint8_t inb(uint16_t port) {
 }
 
 void io_wait(void) {
-    // outb(0x80, 0);
-    __asm__ volatile("nop;nop;nop;nop");
+    outb(0x80, 0);
+    // __asm__ volatile("nop;nop;nop;nop");
 }

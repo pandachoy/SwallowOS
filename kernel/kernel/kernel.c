@@ -11,10 +11,12 @@
 #include <kernel/list.h>
 #include <kernel/malloc.h>
 #include <kernel/semaphore.h>
+#include <kernel/pic.h>
 #include "../arch/x86_64/pagemanager.h"
 #include "../arch/x86_64/task.h"
 #include "../arch/x86_64/cpu.h"
 #include "../arch/x86_64/pgtable.h"
+#include "../arch/x86_64/floppy.h"
 #include "../multiboot/multiboot.h"
 
 #include "../../../libc/include/syscall.h"
@@ -256,6 +258,7 @@ void user_work() {
 void user_work_wrapper() {
     get_to_ring3(user_work);
 }
+
 extern void do_syscall();
 
 /* test physical memory */
@@ -291,6 +294,23 @@ void test_pm(void) {
 
 }
 
+/* test floppy disk */
+void test_floppy_disk(void) {
+    sti();
+    IRQ_set_mask(0);
+    floppy_init();
+    char buffer[512] = {0};
+    floppy_read_lba(1, buffer);
+    printf("%s\n", buffer);
+    buffer[1] = 'e';
+    floppy_write_lba(1, buffer);
+    for (unsigned int i=0; i<512; ++i) {
+        buffer[i] = 0;
+    }
+    floppy_read_lba(1, buffer);
+    printf("%s\n", buffer);
+}
+
 extern void *page_map_level4;
 void kernel_main(void) {
     // load_gdt();
@@ -301,7 +321,8 @@ void kernel_main(void) {
     timer_init();
     NMI_enable();
     NMI_disable();
-    test_pm();
+
+    test_floppy_disk();
 
     __asm__ volatile ("hlt");
 }

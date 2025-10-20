@@ -6,7 +6,7 @@
 
 #define IDT_MAX_DESCRIPTORS 			256
 #define IDT_CPU_EXCEPTION_COUNT			32
-#define IDT_IRQ_COUNT                   2
+#define IDT_IRQ_COUNT                   7
 
 #define IDT_DESCRIPTOR_X16_INTERRUPT	0x06
 #define IDT_DESCRIPTOR_X16_TRAP 		0x07
