@@ -1,17 +1,18 @@
 #include <stddef.h>
 #include <stdio.h>
+#include <kernel/printk.h>
 #include "task.h"
 #include "syscall.h"
 
 extern struct thread_control_block *current_task_TCB;
 
 int sys_read(int fd, size_t size, char *buffer) {
-    printf("read called %u ", ((uint64_t)current_task_TCB->rsp0 | 0xFFF) - (uint64_t)current_task_TCB->rsp0);
+    printk("read called %u ", ((uint64_t)current_task_TCB->rsp0 | 0xFFF) - (uint64_t)current_task_TCB->rsp0);
     return 1;
 }
 
 int sys_write(int fd, size_t size, char *buffer) {
-    printf("write called %d ", (int)buffer);
+    printk("write called %d ", (int)buffer);
     return 2;
 }
 

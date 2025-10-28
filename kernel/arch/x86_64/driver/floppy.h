@@ -2,6 +2,7 @@
 #define FLOPPY_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 void floppy_init(void);
 bool floppy_read_chs(uint8_t cylinder, uint8_t head, uint8_t sector, uint8_t *buffer512);

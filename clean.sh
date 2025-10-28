@@ -7,6 +7,6 @@ for PROJECT in $PROJECTS; do
 done
 
 rm -rf floppy_disk.img || true
-rm -rf sysroot
-rm -rf isodir
-rm -rf SwallowOS.iso
+rm -rf sysroot || true
+rm -rf isodir || true
+rm -rf SwallowOS.iso || true

@@ -2,6 +2,7 @@
 #include <kernel/malloc.h>
 #include <kernel/tty.h>
 #include <kernel/page.h>
+#include <kernel/printk.h>
 #include "pagemanager.h"
 
 #define HEADER_SIZE       ((size_t)&((chunk*)0)->data)
@@ -81,7 +82,7 @@ static void kmemory_page_init(unsigned int page_tag_index) {
 
     size_t len = memory_chunk_size(second);
     int n = memory_chunk_slot(len);
-    // printf("%s(%d, %d): adding chunk %d %d\n", __FUNCTION__, mem, size, len, n);
+    // printk("%s(%d, %d): adding chunk %d %d\n", __FUNCTION__, mem, size, len, n);
     pt->free_chunk[n] = second;
     pt->mem_free = len - HEADER_SIZE;                                                /* 为什么这里还要减去一个HEADER_SIZE?在memory_chunk_size已经减去一个了 */
     max_page_free_size = max_page_free_size < pt->mem_free ? max_page_free_size : pt->mem_free;
@@ -136,7 +137,7 @@ static void *kmalloc_on_cur_page(size_t size) {
     cur_page_tag->mem_used += size2 - len - HEADER_SIZE;                                          /* 当新增used chunk时，mem_used会改变 */
     
     if (cur_page_tag->mem_used + cur_page_tag->mem_free + cur_page_tag->mem_meta != max_page_free_size + sizeof(chunk) * 2 + HEADER_SIZE) {
-        printf("panic");
+        printk("panic");
     }
 
     return fetch_ck->data;
@@ -189,7 +190,7 @@ void *kmalloc(size_t size) {
 
     int check = kmcheck();
     if (check != 0) {
-        printf("check ");
+        printk("check ");
     }
 
     return p;
@@ -315,7 +316,7 @@ int km_freecheck(void) {
     for (unsigned int i=0; i<MM_PAGE_NUM; ++i) {
         page_tag *pt = &(mm_pages[i]);
         if (pt->page != 0) {
-            printf("non freed page found! ");
+            printk("non freed page found! ");
         }
     }
 } 

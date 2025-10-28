@@ -3,6 +3,7 @@
 #include "kernel/timer.h"
 #include "kernel/malloc.h"
 #include "kernel/tty.h"
+#include <kernel/printk.h>
 #include "pagemanager.h"
 #include "task.h"
 
@@ -43,16 +44,16 @@ void kernel_idle_work(void) {
         }
 
 
-        printf("idle work {%u %u} ", when, get_timer_count());
-        printf("(");
+        printk("idle work {%u %u} ", when, get_timer_count());
+        printk("(");
         if (ready_tcb_list) {
             struct list_head *p = ready_tcb_list;
             do {
-                printf("%u ", (container_of(p, struct thread_control_block, tcb_list))->task_id);
+                printk("%u ", (container_of(p, struct thread_control_block, tcb_list))->task_id);
                 p = p->next;
             } while (p != ready_tcb_list);
         }
-        printf(") ");
+        printk(") ");
 
         for (unsigned long i=0; i<300000000; ++i);
         // lock_scheduler();
@@ -74,7 +75,7 @@ void kernel_clean_work(void) {
             terminated_task_list = terminated_task_list->next;
             list_del(&task->tcb_list);
         }
-        printf("task %u terminated\n", task->task_id);
+        printk("task %u terminated\n", task->task_id);
         kfree_frame((pageframe_t)(((uint64_t)task->rsp0) & 0xFFFFFFFFFFFFF000));  /* locate the start of page frame */
         kfree_frame((pageframe_t)(((uint64_t)task->rsp) & 0xFFFFFFFFFFFFF000));  /* locate the start of page frame */
         kfree(task);

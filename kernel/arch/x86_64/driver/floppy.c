@@ -65,7 +65,7 @@ static void fdc_sense_interrupt(uint8_t *st0, uint8_t *cyl) {
 
 static void fdc_reset(void) {
     /* reset controller */
-    printf("fdc_reset\n");
+    printk("fdc_reset\n");
     outb(FDC_DOR, 0x00);
     io_wait();
     outb(FDC_DOR, 0x0C);
@@ -74,7 +74,7 @@ static void fdc_reset(void) {
         floppy_wait_irq_timeout(1e5);
         uint8_t st0, cyl;
         fdc_sense_interrupt(&st0, &cyl);
-        printf("sense\n");
+        printk("sense\n");
         (void)st0;
         (void)cyl;
     }
@@ -86,7 +86,7 @@ static bool fdc_calibrate(uint8_t drive) {
         fdc_send_cmd(0x07);     /* calibrate */
         fdc_write(drive);
         if (!floppy_wait_irq_timeout(1e6)) {
-            printf("calibrating timeout\n");
+            printk("calibrating timeout\n");
             continue;
         }
         uint8_t st0, cyl;
@@ -101,7 +101,7 @@ static bool fdc_seek(uint8_t drive, uint8_t head, uint8_t cyl) {
     fdc_write((head << 2) | drive);
     fdc_write(cyl);
     if (!floppy_wait_irq_timeout(2e6)) {
-        printf("seeking timeout\n");
+        printk("seeking timeout\n");
         motor_off();
         return false;
     }
@@ -144,7 +144,7 @@ void floppy_init(void) {
     /* register irq6 */
     // idt_register_irq6(floppy_irq_handler); todo
     fdc_reset();
-    printf("fdc_calibrate: %d\n",fdc_calibrate(0));
+    printk("fdc_calibrate: %d\n",fdc_calibrate(0));
 }
 
 bool floppy_read_chs(uint8_t c, uint8_t h, uint8_t s, uint8_t *buffer512) {
@@ -154,11 +154,11 @@ bool floppy_read_chs(uint8_t c, uint8_t h, uint8_t s, uint8_t *buffer512) {
         return false;
     }
 
-    printf("dma setup\n");
+    printk("dma setup\n");
     dma_setup_read(0x1000, 512);
 
     /* read data: MFM=1 SK=0 MT=0 */
-    printf("read cmd\n");
+    printk("read cmd\n");
     fdc_send_cmd(0xE6);
     fdc_write((h << 2) | 0);
     fdc_write(c);
@@ -170,7 +170,7 @@ bool floppy_read_chs(uint8_t c, uint8_t h, uint8_t s, uint8_t *buffer512) {
     fdc_write(0xFF);      /* DTL */
 
     if (!floppy_wait_irq_timeout(2e6)) {
-        printf("read timeout\n");
+        printk("read timeout\n");
         motor_off();
         return false;
     }
@@ -237,7 +237,7 @@ bool floppy_write_lba(uint32_t lba, const uint8_t *buffer512) {
     dma_setup_write(0x1000, 512);
 
     /* write data mfm */
-    printf("write cmd\n");
+    printk("write cmd\n");
     fdc_send_cmd(0xC5);
     fdc_write((h << 5) | 0);
     fdc_write(c);
@@ -249,7 +249,7 @@ bool floppy_write_lba(uint32_t lba, const uint8_t *buffer512) {
     fdc_write(0xFF);
 
     if (!floppy_wait_irq_timeout(1e6)) {
-        printf("write timeout\n");
+        printk("write timeout\n");
         motor_off();
         return false;
     }

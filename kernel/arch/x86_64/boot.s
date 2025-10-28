@@ -29,7 +29,7 @@
 # Allocate the initial stack.
 .section .bootstrap_stack, "aw", @nobits
 stack_bottom:
-.skip 16384 # 16 KiB
+.skip 1048576 # 1 MiB
 stack_top:
 
 # Preallocate pages used for paging. Don't hard-code addresses and assume they

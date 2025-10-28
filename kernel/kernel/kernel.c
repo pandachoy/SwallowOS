@@ -11,19 +11,22 @@
 #include <kernel/list.h>
 #include <kernel/malloc.h>
 #include <kernel/semaphore.h>
+#include <kernel/string.h>
+#include <kernel/printk.h>
 #include <kernel/pic.h>
 #include "../arch/x86_64/pagemanager.h"
 #include "../arch/x86_64/task.h"
 #include "../arch/x86_64/cpu.h"
 #include "../arch/x86_64/pgtable.h"
-#include "../arch/x86_64/floppy.h"
+#include "../arch/x86_64/driver/floppy.h"
+#include "../arch/x86_64/fs/fat.h"
 #include "../multiboot/multiboot.h"
 
 #include "../../../libc/include/syscall.h"
 
 /* test helloworld */
 void test_helloworld() {
-    printf("Hello, %s!\nHi!", "World");
+    printk("Hello, %s!\nHi!", "World");
 }
 
 /* test keyboard */
@@ -33,9 +36,9 @@ void test_keyboard() {
     while(1) {
         if (key_buffer_pos > 0) {
             // for (int i = 0; i < key_buffer_pos; i++) {
-            //     printf(keyboard_buffer[i]);
+            //     printk(keyboard_buffer[i]);
             // }
-            printf("%s", keyboard_buffer);
+            printk("%s", keyboard_buffer);
             key_buffer_pos = 0;
         }
     }
@@ -54,15 +57,15 @@ void test_pagealloc() {
     for (i = 0; i < 200 ; ++i) {
         page_array[i] = kalloc_frame();
         if (!page_array[i]) {
-            printf("No free pages left! %d\n", count);
+            printk("No free pages left! %d\n", count);
             break;
         }
         count++;
     }
 
-    printf("npages: %u\n", npages);
-    printf("frame_map: %u\n", frame_map);
-    printf("startframe: %u\n", startframe);
+    printk("npages: %u\n", npages);
+    printk("frame_map: %u\n", frame_map);
+    printk("startframe: %u\n", startframe);
 
     kfree_frame(page_array[43]);
     kfree_frame(page_array[56]);
@@ -71,7 +74,7 @@ void test_pagealloc() {
     for (; i < 200; ++i) {
         page_array[i] = kalloc_frame();
         if (!page_array[i]) {
-            printf("No free pages left! %d\n", count);
+            printk("No free pages left! %d\n", count);
             break;
         }
         count++;
@@ -96,12 +99,12 @@ void test_mm(void) {
         seed = lcg(seed) % 10001;
         slots[i] = kmalloc(seed);
         if (!slots[i]) {
-        printf("break at %u\n", i);
+        printk("break at %u\n", i);
         break;
         }
     }
 
-    printf("mm check: %d\n", kmcheck());
+    printk("mm check: %d\n", kmcheck());
     for (unsigned int i = 0; i < 1024; ++i) {
         if (slots[i]) 
             kfree(slots[i]);
@@ -123,18 +126,18 @@ extern unsigned long get_timer_count();
 
 void print_list(struct list_head *l) {
     struct list_head *p = l;
-    printf("(");
+    printk("(");
     if (l) {
         do {
-            printf("%u ", (container_of(p, struct thread_control_block, tcb_list))->task_id);
+            printk("%u ", (container_of(p, struct thread_control_block, tcb_list))->task_id);
             p = p->next;
         } while (p != l);
     }
-    printf(") ");
+    printk(") ");
 }
 
 static unsigned int list_size(struct list_head *list) {
-    // printf("[inner %u]", list);
+    // printk("[inner %u]", list);
     if (!list)
         return 0;
 
@@ -164,16 +167,16 @@ void test_task(void) {
         else
             str[0] = 'A';
         char *pattern = "[%s %u %u %u] ";
-        printf("[%u ] ", current_task_TCB->task_id);
+        printk("[%u ] ", current_task_TCB->task_id);
         // print_list(sleeping_task_list);
         // print_list(ready_tcb_list);
         // print_list(paused_task_list);
         print_list(smph->waiting_task_list);
-        printf("smph->cur_count: %u ", smph->current_count);
-        // printf("[outer %u]", ready_tcb_list);
+        printk("smph->cur_count: %u ", smph->current_count);
+        // printk("[outer %u]", ready_tcb_list);
         // list_size(ready_tcb_list);
-        // printf("[after outer %u]", list_size(ready_tcb_list));
-        // printf(pattern, str, current_task_TCB->task_id, list_size(ready_tcb_list), list_size(blocked_list));
+        // printk("[after outer %u]", list_size(ready_tcb_list));
+        // printk(pattern, str, current_task_TCB->task_id, list_size(ready_tcb_list), list_size(blocked_list));
         // lock_scheduler();
         // schedule();
         // unlock_scheduler();
@@ -182,17 +185,17 @@ void test_task(void) {
             static int a = 1;
             if (a == 1) {
                 a = 0;
-                printf("terminating task %u\n", current_task_TCB->task_id);
+                printk("terminating task %u\n", current_task_TCB->task_id);
                 terminate_task();
             }
         }
         else if (count%2==0 && paused_task_list) {
-            printf("unblock ");
+            printk("unblock ");
             unblock_task(container_of(paused_task_list, struct thread_control_block, tcb_list));
         }
         else if (count%7==0) {
             if (list_size(paused_task_list) <3) {
-                printf("block ");
+                printk("block ");
                 block_task(PAUSED);                
             }
         }
@@ -200,29 +203,29 @@ void test_task(void) {
         // else if (count%11==0) {
         //     if (postpone_flag) {
         //         postpone_flag = 0;
-        //         printf("postpone ");
+        //         printk("postpone ");
         //         lock_stuff();
         //     } else {
         //         postpone_flag = 1;
-        //         printf("no postpone ");
+        //         printk("no postpone ");
         //         unlock_stuff();
         //     }
         // }
         else if (count%4==0) {
-            printf("sleep %u ", current_task_TCB->task_id);
+            printk("sleep %u ", current_task_TCB->task_id);
             nano_sleep_until(get_timer_count() + 65000);
         }
         else if (count%27==0) {
-            printf("useless sleep %u ", current_task_TCB->task_id);
+            printk("useless sleep %u ", current_task_TCB->task_id);
             nano_sleep_until(get_timer_count() - 1);
         }
         else {
             smph_count = (smph_count+1) % 10;
             if (smph_count < 5) {
-                printf("acquire %u ", current_task_TCB->task_id);
+                printk("acquire %u ", current_task_TCB->task_id);
                 acquire_semaphore(smph);
             } else {
-                printf("release %u ", current_task_TCB->task_id);
+                printk("release %u ", current_task_TCB->task_id);
                 release_semaphore(smph);
             }
         }
@@ -232,16 +235,18 @@ void test_task(void) {
 
 /* test ring3 */
 void print_hello() {
-    printf("hello, ring3\n");
+    printk("hello, ring3\n");
     for (unsigned int i=0; i<1e6; ++i);
 }
+
 void print_hello_ring0() {
     __asm__ volatile ("movl $0x10, %eax;"
                       "movw %ax, %ds;"
                       "movw %ax, %es;"
                       "movw %ax, %fs;"
                       "movw %ax, %gs");
-    printf("hello, ring0\n");
+
+    printk("hello, ring0\n");
     while(1);
 }
 
@@ -250,7 +255,7 @@ void user_work() {
         for (unsigned int i = 0; i < 2e8; ++i);
         uint64_t task_id = get_task_id();
         uint64_t rsp0 = get_rsp0();
-        printf("hello, user work %u %u\n", task_id, rsp0);
+        printk("hello, user work %u %u\n", task_id, rsp0);
     }
     
 }
@@ -267,30 +272,31 @@ extern void *p_multiboot_info;
 void kernel_main(void);
 void print_valid_memory(multiboot_info_t *mbd) {
     if(!(mbd->flags >> 6 & 0x1)) {
-        printf("invalid memory map");
+        printk("invalid memory map");
         return;
     }
 
     for(unsigned int i = 0; i < mbd->mmap_length; i += sizeof(multiboot_memory_map_t)) {
         multiboot_memory_map_t *mmmt = (multiboot_memory_map_t*) (mbd->mmap_addr + i);
-        printf("Start Addr: %u | Length: %u | Size: %u | Type: %d\n",
+        printk("Start Addr: %u | Length: %u | Size: %u | Type: %d\n",
             mmmt->addr, mmmt->len, mmmt->size, mmmt->type);
         
         if (mmmt->type == MULTIBOOT_MEMORY_AVAILABLE) {
-            printf("This mem map is available\n");
+            printk("This mem map is available\n");
         }
     }
 }
+
 #include "../arch/x86_64/ram.h"
 void test_pm(void) {
-    printf("kernel main: %u\n", kernel_main);
+    printk("kernel main: %u\n", kernel_main);
     print_valid_memory(p_multiboot_info);
 
     kalloc_frame_init();
-    printf("npages: %u\n", npages);
-    printf("ram_start: %u, ram_end: %u\n", ram_start, ram_end);
+    printk("npages: %u\n", npages);
+    printk("ram_start: %u, ram_end: %u\n", ram_start, ram_end);
 
-    // printf("kernel_main physaddr: %u\n", get_physaddr(&page_map_level4, kernel_main));
+    // printk("kernel_main physaddr: %u\n", get_physaddr(&page_map_level4, kernel_main));
 
 }
 
@@ -301,14 +307,30 @@ void test_floppy_disk(void) {
     floppy_init();
     char buffer[512] = {0};
     floppy_read_lba(1, buffer);
-    printf("%s\n", buffer);
+    printk("%s\n", buffer);
     buffer[1] = 'e';
     floppy_write_lba(1, buffer);
     for (unsigned int i=0; i<512; ++i) {
         buffer[i] = 0;
     }
     floppy_read_lba(1, buffer);
-    printf("%s\n", buffer);
+    printk("%s\n", buffer);
+}
+
+/* test fat */
+void test_fat(void) {
+    sti();
+    IRQ_set_mask(0);
+    floppy_init();
+
+    fat12_t fs;
+    printk("mount res: %d\n", fat12_mount(&fs));
+    char buffer[4096] = {0};;
+    uint32_t outlen;
+
+    printk("read res: %d\n", fat12_read_file(&fs, "DREAM.TXT", buffer, 1024, &outlen));
+    printk("file content:\n");
+    printk("%s\n", buffer);
 }
 
 extern void *page_map_level4;
@@ -322,7 +344,7 @@ void kernel_main(void) {
     NMI_enable();
     NMI_disable();
 
-    test_floppy_disk();
+    test_fat();
 
     __asm__ volatile ("hlt");
 }
