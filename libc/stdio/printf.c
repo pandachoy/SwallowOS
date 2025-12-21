@@ -46,12 +46,12 @@ static char* itoa_signed(long value, char* str, int base)
 		*str = '\0';
 		return ret;
 	}
-	if (base == 10 && value < 0)
+	if (value < 0)
 	{
 		value = -value;
 		*str++ = '-';
 	}
-    return itoa_internal(value > 0 ? value : -value, str, base);
+    return itoa_internal(value, str, base);
 }
 
 static char* itoa_unsigned(unsigned long value, char* str, int base) {
@@ -132,12 +132,13 @@ int vprintk_func(const char *format, va_list parameters) {
             if (!print(str, strlen(str)))
                 return -1;
             written += len;
-        } else if (*format == 'u') {
+        } else if (*format == 'u' || *format == 'x') {
+            char carry = *format;
             format++;
             char str[32];
             memset(str, 0, 32);
             unsigned long num = (unsigned long) va_arg(parameters, unsigned long);
-            itoa_unsigned(num, str, 10);
+            itoa_unsigned(num, str, (carry == 'x') ? 16 : 10);
             size_t len = strlen(str);
             if (!print(str, strlen(str)))
                 return -1;

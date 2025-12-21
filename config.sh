@@ -1,5 +1,5 @@
 SYSTEM_HEADER_PROJECTS="libc kernel"
-PROJECTS="libc kernel"
+PROJECTS="libc kernel app"
 
 export MAKE=${MAKE:-make}
 export HOST=${HOST:-$(./default-host.sh)}
@@ -12,6 +12,7 @@ export PREFIX=/usr
 export EXEC_PREFIX=$PREFIX
 export BOOTDIR=/boot
 export LIBDIR=$EXEC_PREFIX/lib
+export APPDIR=$EXEC_PREFIX/app
 export INCLUDEDIR=$PREFIX/include
 
 export CFLAGS='-O0 -g'

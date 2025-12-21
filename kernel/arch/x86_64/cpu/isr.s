@@ -10,6 +10,8 @@ isr_stub_\p:
     iretq
 .endm
 
+.include "arch/x86_64/cpu/cpu.inc"
+
 .section .text
 isr_no_err_stub 0
 isr_no_err_stub 1
@@ -27,8 +29,11 @@ isr_err_stub    12
 isr_err_stub    13
 
 isr_stub_14:
-    mov %rsp, %rdi
+    mov (%rsp), %rdi
+    push_all
     call page_fault_handler
+    pop_all
+    add $8, %rsp
     iretq
 
 isr_no_err_stub 15

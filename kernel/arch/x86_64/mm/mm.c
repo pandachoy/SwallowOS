@@ -1,6 +1,6 @@
 
 #include <kernel/page.h>
-#include <kernel/string.h>
+#include <string.h>
 #include "../include/defs.h"
 #include "../cpu/cpu.h"
 #include "mm.h"
@@ -10,7 +10,7 @@
 const uint64_t mm_rsp_offset = offset_of(struct mm_struct, rsp);
 const uint64_t mm_rsp0_offset = offset_of(struct mm_struct, rsp0);
 const uint64_t mm_tss_rsp0_offset = offset_of(struct mm_struct, tss_rsp0);
-const uint64_t mm_cr3_offset = offset_of(struct mm_struct, cr3);
+const uint64_t mm_pgd_offset = offset_of(struct mm_struct, pgd);
 
 int mm_init(struct mm_struct *mm) {
     if (!mm) return -1;
@@ -26,7 +26,6 @@ int mm_init(struct mm_struct *mm) {
         return -1;
     }
     mm->rsp =  mm->stack.page + mm->stack.npages * PAGE_SIZE;
-    mm->cr3 = getcr3();
     return 0;
 }
 

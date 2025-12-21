@@ -29,3 +29,7 @@ uint64_t get_rsp0() {
 int putchar(int ic) {
     return libc_do_syscall(4, ic, NULL, NULL, NULL, NULL, NULL);
 }
+
+int exit(int code) {
+    return libc_do_syscall(5, code, NULL, NULL, NULL, NULL, NULL);
+}

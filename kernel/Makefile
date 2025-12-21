@@ -7,7 +7,7 @@ CPPFLAGS?=
 LDFLAGS?=
 LIBS?=
 
-DESTDIR=$(SYSROOT)/kernel
+DESTDIR=$(SYSROOT)
 PREFIX?=/usr/local
 EXEC_PREFIX?=$(PREFIX)
 BOOTDIR?=$(EXEC_PREFIX)/boot
@@ -16,7 +16,7 @@ INCLUDEDIR?=$(PREFIX)/include
 CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -no-pie -fno-pic -fomit-frame-pointer
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LDFLAGS:=$(LDFLAGS)
-LIBS:=$(LIBS) -nostdlib -lgcc
+LIBS:=$(LIBS) -nostdlib -lgcc -lk
 
 ARCHDIR=arch/$(HOSTARCH)
 

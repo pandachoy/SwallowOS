@@ -2,9 +2,16 @@
 #include "fat.h"
 #include <kernel/malloc.h>
 #include <kernel/printk.h>
-#include <kernel/string.h>
+#include <string.h>
+#include <kernel/page.h>
+#include "../sched/task.h"
+#include "../mm/mm.h"
 #include "elf.h"
 #include "elfloader.h"
+
+#define ELF_PAGESTART(_v) ((_v) & ~(PAGE_SIZE-1))
+#define ELF_PAGEOFFSET(_v) ((_v) & (PAGE_SIZE-1))
+#define ELF_PAGEALIGN(_v) (((_v) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
 
 static void read_elf(const char *elf_content, unsigned int len) {
     if (len == 0) {
@@ -25,7 +32,7 @@ static void read_elf(const char *elf_content, unsigned int len) {
             type = "EXEC";
             break;
         case ET_DYN:
-            type = "EYN";
+            type = "DYN";
             break;
         case ET_REL:
             type = "REL";
@@ -125,19 +132,76 @@ static void read_elf(const char *elf_content, unsigned int len) {
     return;
 }
 
+static int _do_load_elf(char *elf_content) {
+    Elf64_Ehdr *elf_hdr = (Elf64_Ehdr* )elf_content;
+
+    /* check magic */
+    if (elf_hdr->e_ident[EI_MAG0] != ELFMAG0
+     || elf_hdr->e_ident[EI_MAG1] != ELFMAG1
+     || elf_hdr->e_ident[EI_MAG2] != ELFMAG2
+     || elf_hdr->e_ident[EI_MAG3] != ELFMAG3) {
+        printk("[Error] Not a valid elf\n");
+        return -1;
+    }
+
+    /* check type */
+    if (elf_hdr->e_type !=  ET_EXEC) {
+    printk("[Error] ELF not EXEC type\n");
+    return -1;
+    }
+
+    /* check machine */
+    if (elf_hdr->e_machine != EM_X86_64) {
+    printk("[Error] ELF not of x86_64 machine\n");
+    return -1;
+    }
+
+    /* load elf program header */
+    struct mm_struct *mm = current_task_TCB->mm;
+    Elf64_Phdr *p_hdr = elf_content + elf_hdr->e_phoff;
+    for (unsigned int i=0; i<elf_hdr->e_phnum; ++i) {
+        if (p_hdr[i].p_type != PT_LOAD)
+            continue;
+
+        struct vm_area_struct *vma = (struct vm_area_struct *)kmalloc(sizeof(struct vm_area_struct));
+        if (!vma) {
+            printk("[Error] Failed to alloc space of vma\n");
+            return -1;
+        }
+        vma->vm_flags = p_hdr[i].p_type;
+        vma->vm_start = ELF_PAGESTART(p_hdr[i].p_vaddr);
+        vma->vm_end = ELF_PAGEALIGN(p_hdr[i].p_vaddr + p_hdr[i].p_memsz);
+        vma->vm_pgoff = p_hdr[i].p_offset >> PAGE_SHIFT;
+        vma->vm_mm = mm;
+
+        if (!mm->mmap) {
+            mm->mmap = vma;
+            INIT_LIST_HEAD(&mm->mmap->vma_list);
+        } else {
+            list_add_tail(&vma->vma_list, &mm->mmap->vma_list);
+        }
+    }
+    return 0;
+}
+
 int load_elf(fat12_t *fs, const char *name) {
+    int r = 0;
+    lock_scheduler();
+
     uint8_t sec[BYTES_PER_SECTOR] = {0};
     int64_t size = fat12_get_file_size(fs, name);
     if (size <= 0) {
         printk("[Error] Failed to get file size of %s\n", name);
-        return -1;
+        r = -1;
+        goto out;
     }
     printk("Get elf size: %u\n", size);
 
     uint8_t *file_content = (uint8_t *)kmalloc(size + 1);
     if (!file_content) {
         printk("[Error] Failed to alloc file buffer of %s\n", name);
-        return -1;
+        r = -1;
+        goto out;
     }
     memset(file_content, '\0', size);
 
@@ -145,12 +209,21 @@ int load_elf(fat12_t *fs, const char *name) {
     if (!fat12_read_file(fs, name, file_content, size, &outlen)) {
         printk("[Error] Failed to read file %s\n", name);
         kfree(file_content);
-        return -1;
+        r = -1;
+        goto out;
     }
 
-    read_elf(file_content, outlen);
-    kfree(file_content);
+    // read_elf(file_content, outlen);
 
-    return 0;
+    if (_do_load_elf(file_content) != 0) {
+        printk("Error] Failed to load elf content\n");
+        kfree(file_content);
+        r = -1;
+        goto out;
+    }
+    r = 0;
+out:
+    unlock_scheduler();
+    return r;
 }
 

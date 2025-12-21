@@ -1,5 +1,6 @@
 .set RUNNING,    0x0
-.set READY,      0x1    
+.set READY,      0x1   
+.include "arch/x86_64/cpu/cpu.inc"
 
 # C declaration
 # void switch_to_task(thread_control_block *next_thread);
@@ -52,8 +53,8 @@ switch_to_task:
     mov mm_rsp0_offset(%rip), %rcx
     mov (%rsi, %rcx, 1), %rsp
     
-    # read cr3
-    mov mm_cr3_offset(%rip), %rcx
+    # read pgd
+    mov mm_pgd_offset(%rip), %rcx
     mov (%rsi, %rcx, 1), %rax
 
     # save current_task_TCB->mm->tss_rsp0 to tss_rsp0
@@ -63,7 +64,7 @@ switch_to_task:
 
     # compare virtual address
     mov %cr3, %rcx
-    cmpl %ecx, %eax
+    cmp %rcx, %rax
     je .doneVAS
     mov %rax, %cr3
 .doneVAS:

@@ -5,10 +5,12 @@
 #include "kernel/tty.h"
 #include <kernel/printk.h>
 #include <kernel/pic.h>
+#include <string.h>
 #include "../include/defs.h"
 #include "../mm/mm.h"
 #include "../mm/pagemanager.h"
 #include "../cpu/cpu.h"
+#include "../include/constant.h"
 #include "task.h"
 
 #define TIME_SLICE_LENGTH     200
@@ -84,6 +86,7 @@ struct thread_control_block *kernel_clean_task = NULL;
 
 static void task_start_up() {
     unlock_scheduler();
+    sti();
 }
 
 void init_scheduler(void) {
@@ -95,7 +98,7 @@ void init_scheduler(void) {
     kernel_idle_task->task_id = 0;
     kernel_idle_task->mm->rsp0 = 0;
     kernel_idle_task->mm->rsp =  0;
-    kernel_idle_task->mm->cr3 = getcr3();
+    kernel_idle_task->mm->pgd = getcr3();
     kernel_idle_task->state = RUNNING;
     kernel_idle_task->time_used = 0;
     current_task_TCB = kernel_idle_task;
@@ -116,23 +119,21 @@ struct thread_control_block *create_task(void (*ent)) {
         /* alloc new tcb mem */
         struct thread_control_block *new_task = (struct thread_control_block *)kmalloc(sizeof(struct thread_control_block));
         if (!new_task)
-            return 0;
+            goto new_task_failed;
 
         new_task->mm = (struct mm_struct *)kmalloc(sizeof(struct mm_struct));
         if (!new_task->mm) {
-            kfree(new_task);
-            return 0;
+            goto mm_failed;
         }
         if (mm_init(new_task->mm) != 0) {
-            kfree(new_task->mm);
-            kfree(new_task);
-            return 0;
+            goto mm_init_failed;
         }
 
         /* init new task */
         new_task->task_id = ++task_id_counter;
         new_task->state = READY;
         new_task->time_used = 0;
+        new_task->mm->pgd = kernel_idle_task->mm->pgd;
 
         /* init stack */
         PUSH_STACK(new_task->mm->rsp0, ent); /* ret function */
@@ -142,6 +143,7 @@ struct thread_control_block *create_task(void (*ent)) {
         PUSH_STACK(new_task->mm->rsp0, 0);   /* rcx */
         PUSH_STACK(new_task->mm->rsp0, 0);   /* rsi */
 
+
         /* add to ready list */
         if (!ready_tcb_list) {
             ready_tcb_list = &(new_task->tcb_list);
@@ -150,9 +152,21 @@ struct thread_control_block *create_task(void (*ent)) {
             list_add_tail(&new_task->tcb_list, ready_tcb_list);
         }
         return new_task;
+pgd_failed:
+
+mm_init_failed:
+        kfree(new_task->mm);
+mm_failed:
+        if (new_task)
+            kfree(new_task);
+new_task_failed:
+        return 0;
+
 }
 
 void schedule() {
+    printk("schedule\n");
+
     if (postpone_task_switches_counter != 0) {
         /* 此处流程通常是因为之前调用了lock_stuff，此处会跳过当前schedule，推迟到unblock_stuff中的schedule */
         /* 此处目的是上下文切换与调度的分离 */

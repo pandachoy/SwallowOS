@@ -27,6 +27,11 @@ uint64_t sys_get_rsp0() {
     return current_task_TCB->mm ? current_task_TCB->mm->rsp0 : 0;
 }
 
+int sys_exit(int code) {
+    return 0;
+}
+
+
 int sys_putchar(int ic) {
     terminal_putchar(ic);
     return 0;
@@ -37,6 +42,7 @@ void * syscalls[] = {
     sys_write,
     sys_get_task_id,
     sys_get_rsp0,
-    sys_putchar
+    sys_putchar,
+    sys_exit
 };
 

@@ -1,5 +1,5 @@
 #include <kernel/printk.h>
-#include <kernel/string.h>
+#include <string.h>
 #include <kernel/printk.h>
 #include "../driver/floppy.h"
 #include "fat.h"

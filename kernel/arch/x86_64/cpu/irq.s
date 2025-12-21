@@ -1,6 +1,10 @@
+.include "arch/x86_64/cpu/cpu.inc"
+
 .section .text
 irq_stub_0:
+    push_all
     callq timer_handler
+    pop_all
     iretq
 
 irq_stub_1:

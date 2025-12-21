@@ -234,8 +234,10 @@ void test_task(void) {
 
 /* test ring3 */
 void print_hello() {
-    printk("hello, ring3\n");
-    for (unsigned int i=0; i<1e6; ++i);
+    while(1) {
+        printk("hello, ring3\n");
+        for (unsigned int i=0; i<1e7; ++i);
+    }
 }
 
 void print_hello_ring0() {
@@ -260,11 +262,13 @@ void user_work() {
 }
 
 void test_page_fault(void) {
-    uint64_t *p = 0x000000000fffff64;
+
+    // uint64_t *p = 0x0ffffff64;
     // uint64_t *p = 0x0000000080100064;
-    while (1) {
-        for (unsigned int i = 0; i < 1e5; ++i);
-        *p = 1;
+    for (;;) {
+        // for (unsigned int i = 0; i < 1e5; ++i);
+        *(uint64_t*)(0x0ffffff64) = 1;
+        // printk("page_fault\n");
     }
 }
 
@@ -343,24 +347,46 @@ void test_fat(void) {
 void test_elf(void) {
     sti();
     lock_scheduler();
-    floppy_init();
-    kalloc_frame_init();
 
     fat12_t fs;
     printk("mount res: %d\n", fat12_mount(&fs));
     char buffer[4096] = {0};;
     unsigned int outlen;
 
-    const char *filename = "MAIN.C";
-    printk("read res size: %d\n", fat12_get_file_size(&fs, filename));
-    printk("read res: %d\n", fat12_read_file(&fs, filename, buffer, 1024, outlen));
-    printk("file content:\n");
-    printk("%s\n", buffer);
-    printk("Read ELF %s\n", "MAIN");
-    load_elf(&fs, "MAIN");
+    // const char *filename = "MAIN.C";
+    // printk("read res size: %d\n", fat12_get_file_size(&fs, filename));
+    // printk("read res: %d\n", fat12_read_file(&fs, filename, buffer, 1024, &outlen));
+    // printk("file content:\n");
+    // printk("%s\n", buffer);
+    printk("Read ELF %s\n", "HELLO");
+    printk("loading ret: %d\n", load_elf(&fs, "HELLO"));
+    unlock_scheduler();
+
+    struct mm_struct *mm = current_task_TCB->mm;
+    printk("mm: %x     mm->mmap: %x\n", mm, mm->mmap);
+    unsigned int count = 0;
+    if (mm && mm->mmap) {
+        struct list_head *p = &mm->mmap->vma_list;
+        struct list_head *e = p;
+        do {
+            struct vm_area_struct *vma = container_of(p, struct vm_area_struct, vma_list);
+            if (vma) {
+             printk("[%u] vm_start: %x, vm_end: %x, vm_flags: %x, vm_pgoff: %x\n", count, vma->vm_start, vma->vm_end, vma->vm_flags, vma->vm_pgoff);
+            }
+            p = p->next;
+        } while (p != e);
+    }
+
+    for (unsigned int i=0; i<1e7; ++i);
+
+
 }
 
+#include "../arch/x86_64/mm/ram.h"
+
+
 extern void *page_map_level4;
+extern void *gdt_ptr;
 void kernel_main(void) {
     // load_gdt();
     terminal_initialize();
@@ -371,14 +397,19 @@ void kernel_main(void) {
     NMI_enable();
     NMI_disable();
 
+
+    floppy_init();
+
     /* set ring0 msr */
     set_ring0_msr(do_syscall);
     kalloc_frame_init();
     init_scheduler();
-    create_task(user_work_wrapper);
+    for (unsigned int i = 0; i < 1; ++i) {
+        struct thread_control_block *tcb = create_task(user_work_wrapper);
+    }
     sti();
     kernel_idle_work();
-
+ 
 
     __asm__ volatile ("hlt");
 }

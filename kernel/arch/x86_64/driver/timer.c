@@ -12,6 +12,7 @@ void timer_handler(void) {
     PIC_sendEOI(PIT_IRQ_NUMBER);
     timer_count++;
     task_hook_in_timer_handler();
+    sti();
 }
 
 void timer_init(void) {

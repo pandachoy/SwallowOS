@@ -82,6 +82,13 @@ getcr3:
     mov %cr3, %rax
     ret
 
+.global setcr3
+.type setcr3, @function
+setcr3:
+    mov %rdi, %rax
+    mov %rax, %cr3
+    ret
+
 
 
 

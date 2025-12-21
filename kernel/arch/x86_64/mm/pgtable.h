@@ -8,19 +8,12 @@
 #define pd_index(address)           (((unsigned long)address >> 21) & 0x1ff)
 #define pt_index(address)           (((unsigned long)address >> 12) & 0x1ff)
 
-/* mpl4 */
-extern void *page_map_level4;
-// /* pdptr */
-// extern void *first_page_directory_ptr; /* identity mapping pdtr */
-// extern void *last_page_directory_ptr;
-// /* pd */
-// extern void *last_first_page_directory;
-// extern void *last_second_page_directory;
-// /* pt */
-// extern void *first_page_table;
-// extern void *second_page_table;
+#define PAGE_ADDR_MASK                                    0xFFFF000000000FFF
+#define ENTRY_NUM                                                        512
 
-void *get_physaddr(uint64_t *pml4, void *virtualaddr);
+
+void virtaddr2page(const void *virtualaddr, unsigned int *pml4_idx, unsigned int *pdptr_idx, unsigned int *pd_idx, unsigned int *pt_idx);
+void *get_physaddr(const uint64_t *pml4, const void *virtualaddr);
 
 
 #endif
