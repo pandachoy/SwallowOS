@@ -13,11 +13,15 @@ do_syscall:
     mov current_task_TCB(%rip), %rbx
     mov TCB_mm_offset(%rip), %r12
     mov (%rbx, %r12, 1), %rbx           # load mm into %rbx
+    cmp $0, %rbx
+    je .save_user_stack_done
     mov mm_rsp_offset(%rip), %r12
     mov %rsp, (%rbx, %r12, 1)
+.save_user_stack_done:
 
     /* load kernel stack */
-    mov mm_rsp0_offset(%rip), %r12
+    mov current_task_TCB(%rip), %rbx
+    mov TCB_rsp0_offset(%rip), %r12
     mov (%rbx, %r12, 1), %rsp
 
     /* syscall number is stored in rax */
@@ -33,14 +37,18 @@ do_syscall:
 
     /* save kernel stack */
     mov current_task_TCB(%rip), %rbx
-    mov TCB_mm_offset(%rip), %r12
-    mov (%rbx, %r12, 1), %rbx           # load mm into %rbx
-    mov mm_rsp0_offset(%rip), %r12
+    mov TCB_rsp0_offset(%rip), %r12
     mov %rsp, (%rbx, %r12, 1)
 
     /* load user stack */
+    mov current_task_TCB(%rip), %rbx
+    mov TCB_mm_offset(%rip), %r12
+    mov (%rbx, %r12, 1), %rbx           # load mm into %rbx
+    cmp $0, %rbx
+    je .load_user_stack_done
     mov mm_rsp_offset(%rip), %r12
     mov (%rbx, %r12, 1), %rsp
+.load_user_stack_done:
 
     /* restore user regs */
     movl $(0x20 | 3), %ebx             # user data Segment

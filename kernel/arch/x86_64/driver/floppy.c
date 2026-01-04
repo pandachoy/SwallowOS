@@ -65,7 +65,7 @@ static void fdc_sense_interrupt(uint8_t *st0, uint8_t *cyl) {
 
 static void fdc_reset(void) {
     /* reset controller */
-    printk("fdc_reset\n");
+    // printk("fdc_reset\n");
     outb(FDC_DOR, 0x00);
     io_wait();
     outb(FDC_DOR, 0x0C);
@@ -74,7 +74,7 @@ static void fdc_reset(void) {
         floppy_wait_irq_timeout(1e5);
         uint8_t st0, cyl;
         fdc_sense_interrupt(&st0, &cyl);
-        printk("sense\n");
+        // printk("sense\n");
         (void)st0;
         (void)cyl;
     }
@@ -86,7 +86,7 @@ static bool fdc_calibrate(uint8_t drive) {
         fdc_send_cmd(0x07);     /* calibrate */
         fdc_write(drive);
         if (!floppy_wait_irq_timeout(1e6)) {
-            printk("calibrating timeout\n");
+            // printk("calibrating timeout\n");
             continue;
         }
         uint8_t st0, cyl;
@@ -144,7 +144,7 @@ void floppy_init(void) {
     /* register irq6 */
     // idt_register_irq6(floppy_irq_handler); todo
     fdc_reset();
-    printk("fdc_calibrate: %d\n",fdc_calibrate(0));
+    // printk("fdc_calibrate: %d\n",fdc_calibrate(0));
 }
 
 bool floppy_read_chs(uint8_t c, uint8_t h, uint8_t s, uint8_t *buffer512) {

@@ -27,4 +27,8 @@ struct page_alloc alloc_pages(size_t count);
 void free_pages(struct page_alloc *pa);
 void page_fault_handler(unsigned long error_code);
 
+struct mm_struct;
+void do_mmap(uint64_t virtaddr, struct mm_struct *mm);
+void do_ummap_user(uint64_t pgd);
+
 #endif

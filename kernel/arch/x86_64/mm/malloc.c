@@ -199,6 +199,8 @@ void *kmalloc(size_t size) {
     }
 
 end:
+    if (p)
+        memset(p, 0, size);
     unlock_scheduler();
     return p;
 }

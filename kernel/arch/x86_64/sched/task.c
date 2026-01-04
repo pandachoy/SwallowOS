@@ -18,8 +18,15 @@
 #define TCB_MEM_SIZE 1024
 static char tcb_mem[TCB_MEM_SIZE]; /* memory for tcb */
 
+#define KERNEL_TASK_STACK_PAGE_NUM     10
+
 const uint64_t TCB_state_offset = offset_of(struct thread_control_block, state);
 const uint64_t TCB_mm_offset = offset_of(struct thread_control_block, mm);
+const uint64_t TCB_rsp0_offset = offset_of(struct thread_control_block, rsp0);
+const uint64_t TCB_tss_rsp0_offset = offset_of(struct thread_control_block, tss_rsp0);
+
+
+uint64_t kernel_pgd = NULL;
 
 struct thread_control_block *current_task_TCB = NULL;
 struct list_head *ready_tcb_list = NULL;
@@ -76,7 +83,8 @@ void kernel_clean_work(void) {
             list_del(&task->tcb_list);
         }
         printk("task %u terminated\n", task->task_id);
-        mm_clean(task->mm);
+        // mm_clean(task->mm);
+        free_pages(&task->stack0);
         kfree(task);
     }
     block_task(PAUSED);
@@ -90,15 +98,14 @@ static void task_start_up() {
 }
 
 void init_scheduler(void) {
+    /* load kernel pgd */
+    kernel_pgd = getcr3();
 
     /* init task */
     kmemory_init(tcb_mem,TCB_MEM_SIZE);
     kernel_idle_task = (struct thread_control_block*)kmalloc(sizeof(struct thread_control_block));
-    kernel_idle_task->mm = (struct mm_struct*)kmalloc(sizeof(struct mm_struct));
     kernel_idle_task->task_id = 0;
-    kernel_idle_task->mm->rsp0 = 0;
-    kernel_idle_task->mm->rsp =  0;
-    kernel_idle_task->mm->pgd = getcr3();
+    kernel_idle_task->rsp0 = 0;
     kernel_idle_task->state = RUNNING;
     kernel_idle_task->time_used = 0;
     current_task_TCB = kernel_idle_task;
@@ -115,33 +122,34 @@ void init_scheduler(void) {
     s-=sizeof(uint64_t);*(uint64_t*)(s)=v
 struct thread_control_block *create_task(void (*ent)) {
         static unsigned long task_id_counter = 0;
+        struct page_alloc pa;
+        uint64_t new_pgd;
 
         /* alloc new tcb mem */
         struct thread_control_block *new_task = (struct thread_control_block *)kmalloc(sizeof(struct thread_control_block));
         if (!new_task)
             goto new_task_failed;
+        memset(new_task, 0, sizeof(struct thread_control_block));
 
-        new_task->mm = (struct mm_struct *)kmalloc(sizeof(struct mm_struct));
-        if (!new_task->mm) {
-            goto mm_failed;
+        new_task->stack0 = alloc_pages(KERNEL_TASK_STACK_PAGE_NUM);
+        if (new_task->stack0.page == 0) {
+            goto stack0_failed;
         }
-        if (mm_init(new_task->mm) != 0) {
-            goto mm_init_failed;
-        }
+        new_task->rsp0 = (uint64_t)new_task->stack0.page + new_task->stack0.npages * PAGE_SIZE;
+        new_task->tss_rsp0 = new_task->rsp0;
 
         /* init new task */
         new_task->task_id = ++task_id_counter;
         new_task->state = READY;
         new_task->time_used = 0;
-        new_task->mm->pgd = kernel_idle_task->mm->pgd;
 
         /* init stack */
-        PUSH_STACK(new_task->mm->rsp0, ent); /* ret function */
-        PUSH_STACK(new_task->mm->rsp0, task_start_up);
-        PUSH_STACK(new_task->mm->rsp0, 0);   /* rax */
-        PUSH_STACK(new_task->mm->rsp0, 0);   /* rbx */
-        PUSH_STACK(new_task->mm->rsp0, 0);   /* rcx */
-        PUSH_STACK(new_task->mm->rsp0, 0);   /* rsi */
+        PUSH_STACK(new_task->rsp0, ent); /* ret function */
+        PUSH_STACK(new_task->rsp0, task_start_up);
+        PUSH_STACK(new_task->rsp0, 0);   /* rax */
+        PUSH_STACK(new_task->rsp0, 0);   /* rbx */
+        PUSH_STACK(new_task->rsp0, 0);   /* rcx */
+        PUSH_STACK(new_task->rsp0, 0);   /* rsi */
 
 
         /* add to ready list */
@@ -152,20 +160,15 @@ struct thread_control_block *create_task(void (*ent)) {
             list_add_tail(&new_task->tcb_list, ready_tcb_list);
         }
         return new_task;
-pgd_failed:
 
-mm_init_failed:
-        kfree(new_task->mm);
-mm_failed:
-        if (new_task)
-            kfree(new_task);
+stack0_failed:
+        kfree(new_task);
 new_task_failed:
         return 0;
 
 }
 
 void schedule() {
-    printk("schedule\n");
 
     if (postpone_task_switches_counter != 0) {
         /* 此处流程通常是因为之前调用了lock_stuff，此处会跳过当前schedule，推迟到unblock_stuff中的schedule */

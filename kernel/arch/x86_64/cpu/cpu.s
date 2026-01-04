@@ -26,15 +26,18 @@ get_to_ring3:
 
     # save current_task_TCB->tss_rsp0 to tss_rsp0
     mov current_task_TCB(%rip), %rsi
-    mov TCB_mm_offset(%rip), %rdx
-    mov (%rsi, %rdx, 1), %rsi           # load mm into %rsi
-    mov mm_tss_rsp0_offset(%rip), %rdx
+    mov TCB_tss_rsp0_offset(%rip), %rdx
     mov (%rsi, %rdx, 1), %rdx
     mov %rdx, tss_rsp0
 
-    # load current_task_TCB->rsp
+    # load current_task_TCB->mm->rsp
+    mov TCB_mm_offset(%rip), %rdx
+    mov (%rsi, %rdx, 1), %rsi           # load mm into %rsi
+    cmp $0, %rsi
+    je .load_rsp_done
     mov mm_rsp_offset(%rip), %rdx
     mov (%rsi, %rdx, 1), %rsp
+.load_rsp_done:
 
     sysretq
 

@@ -14,8 +14,17 @@ typedef enum {
     WAITING_FOR_LOCK
 } state_t;
 
+extern void *page_map_level4;
+extern uint64_t kernel_pgd;
+
 struct thread_control_block {
     unsigned long task_id;
+
+    struct page_alloc stack0;
+    void* tss_rsp0;                         /* top of kernel stack to set on tss->rsp0*/ 
+    void* rsp0;                             /* kernel stack */
+    uint64_t pgd0;                           /* the task's virtual address space*/
+
     struct mm_struct *mm;
     state_t state;                          /* state field */
     unsigned long time_used;

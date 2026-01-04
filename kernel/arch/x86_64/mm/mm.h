@@ -10,17 +10,15 @@
 #define VM_EXEC           0x000003
 
 struct mm_struct {
-    struct page_alloc stack;
-    struct page_alloc stack0;
+    // struct page_alloc stack;
     void* rsp;                              /* the task's kernel stack */
-    void* tss_rsp0;                         /* top of kernel stack to set on tss->rsp0*/ 
-    void* rsp0;                             /* kernel stack */
     uint64_t pgd;                           /* the task's virtual address space*/
 
     unsigned long start_code, end_code, start_data, end_data;
     unsigned long start_brk, brk;
     unsigned long start_stack;
 
+    char *elf_content;
     struct vm_area_struct *mmap;
 };
 
@@ -40,5 +38,6 @@ extern const uint64_t mm_state_offset;
 
 int mm_init(struct mm_struct *mm);
 void mm_clean(struct mm_struct *mm);
+uint64_t mm_dup_pgd(int64_t src_pgd);
 
 #endif

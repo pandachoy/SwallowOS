@@ -8,4 +8,4 @@ qemu-system-$(./target-triplet-to-arch.sh $HOST) \
     -m 2G \
     -drive file=floppy_disk.img,if=floppy,format=raw \
     -boot d \
-    -d int,cpu_reset -no-reboot
+    -no-reboot \

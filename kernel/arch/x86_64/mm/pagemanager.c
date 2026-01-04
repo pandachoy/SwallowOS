@@ -8,6 +8,7 @@
 #include <kernel/printk.h>
 #include <string.h>
 #include "../sched/task.h"
+#include "../fs/elfloader.h"
 
 
 /* 页分配有很多方法，如bitmap、stack/list、buddy alocations等，这里用最简单的bitmap */
@@ -39,7 +40,7 @@ static void set_frame_map(unsigned int index, uint64_t val) {
 
 extern void *gdt_ptr;
 static void remap_lower_kernel_range() {
-    printk("_kernel_end: %x\n",  &_kernel_end);
+    // printk("_kernel_end: %x\n",  &_kernel_end);
 
     /* reset gdt */
     // char *gdt_ptr_addr = &gdt_ptr;
@@ -141,6 +142,7 @@ struct page_alloc alloc_pages(size_t count) {
                 set_frame_map(i + j, 1);
             pa.page = (char*)startframe + (i * PAGE_SIZE);
             pa.npages = count;
+            memset(pa.page, 0, PAGE_SIZE);
             return pa;
         }
     }
@@ -150,29 +152,42 @@ struct page_alloc alloc_pages(size_t count) {
 void free_pages(struct page_alloc *pa) {
     if (pa->npages != 0) {
         unsigned int start = (pa->page - startframe) / PAGE_SIZE;
+        memset(pa->page, 0, pa->npages * PAGE_SIZE);
         for (unsigned int i=start; i<start + pa->npages; ++i)
             set_frame_map(i, 0);
     }
 }
 
-static int do_mmap(uint64_t virtaddr) {
-    /* check mappable region */
-    if (virtaddr < (uint64_t)&_kernel_end - HIGHER_HALF_OFFSET || virtaddr > HIGHER_HALF_OFFSET) {
-        printk("Invalid virtual address to map: %x\n", virtaddr);
-        hlt();
+void do_mmap(uint64_t virtaddr, struct mm_struct *mm) {
+
+    /* chech weather virtaddr in vma */
+    if (!mm || !mm->mmap) {
+        panic("No valid vma in page fault\n");
     }
 
-    int r = 0;
-    struct mm_struct *mm = current_task_TCB->mm;
+    struct list_head *p = &mm->mmap->vma_list;
+    struct vm_area_struct *valid_vma = NULL;
+    do {
+        struct vm_area_struct *vma = container_of(p, struct vm_area_struct, vma_list);
+        if (virtaddr >= vma->vm_start && virtaddr < vma->vm_end) {
+            // printk("virtaddr %x in vma %x [%x, %x)]\n", virtaddr, vma, vma->vm_start, vma->vm_end);
+            valid_vma = vma;
+        }
+        p = p->next;
+    }while (p != &mm->mmap->vma_list);
+
+    if (!valid_vma) {
+        panic("No valid vma for virtaddr %x\n", virtaddr);
+    }
 
     /* calculate page indices */
     unsigned int pml4_idx, pdptr_idx, pd_idx, pt_idx;
     virtaddr2page(virtaddr, &pml4_idx, &pdptr_idx, &pd_idx, &pt_idx);
-    printk("pml4_idx: %u, pdptr_idx: %u, pd_idx: %u, pt_idx: %u\n", pml4_idx, pdptr_idx, pd_idx, pt_idx);
+    // printk("pml4_idx: %u, pdptr_idx: %u, pd_idx: %u, pt_idx: %u\n", pml4_idx, pdptr_idx, pd_idx, pt_idx);
     
     uint64_t *p_pml4 = (uint64_t*)((uint64_t)(mm->pgd & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
     /* check and alloc ptpdr page */
-    if (p_pml4[pml4_idx] == 0) {
+    if ((p_pml4[pml4_idx] & (~PAGE_ADDR_MASK))  == 0) {
         struct page_alloc pa = alloc_pages(1);
         if (pa.npages == 0) {
             printk("\nFailed to alloc page of pdptr\n");
@@ -185,7 +200,7 @@ static int do_mmap(uint64_t virtaddr) {
     uint64_t *p_pdptr = (uint64_t*)((p_pml4[pml4_idx] & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
 
     /* check and alloc pdptr page */
-    if (p_pdptr[pdptr_idx] == 0) {
+    if ((p_pdptr[pdptr_idx] & (~PAGE_ADDR_MASK))  == 0) {
         struct page_alloc pa = alloc_pages(1);
         if (pa.npages == 0) {
             printk("\nFailed to alloc page of pd\n");
@@ -207,31 +222,114 @@ static int do_mmap(uint64_t virtaddr) {
     uint64_t *p_pt =  (uint64_t*)((p_pd[pd_idx] & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
 
     /* check and alloc pt page */
-    if (p_pt[pt_idx] == 0) {
+    if ((p_pt[pt_idx] & (~PAGE_ADDR_MASK))  == 0) {
         struct page_alloc pa = alloc_pages(1);
         if (pa.npages == 0) {
             printk("\nFailed to alloc page of pt\n");
             hlt();
         }
         p_pt[pt_idx] = get_physaddr(p_pml4, pa.page) + 0x07;
+
+        /* copy elf content */
+        memset(pa.page, 0, PAGE_SIZE);
+        uint64_t src_start = (ELF_PAGESTART(virtaddr) > valid_vma->vm_start)
+                            ? (mm->elf_content + valid_vma->vm_pgoff + ELF_PAGESTART(virtaddr) - valid_vma->vm_start)
+                            : (mm->elf_content + valid_vma->vm_pgoff);
+        uint64_t len = (ELF_PAGESTART(virtaddr)  + PAGE_SIZE > valid_vma->vm_end)
+                            ? (valid_vma->vm_end - ELF_PAGESTART(virtaddr))
+                            : PAGE_SIZE;
+        uint64_t dst_start = pa.page;
+        memcpy(dst_start, src_start, len);
     }
+}
 
-    /* do load cr3 */
-    setcr3(mm->pgd);
+#define PT_SIZE                              (PAGE_SIZE)
+#define PD_SIZE                          (512 * PT_SIZE)
+#define PDPTR_SIZE                       (512 * PD_SIZE)
+#define PML4_SIZE                     (512 * PDPTR_SIZE)
 
-    return 0;
+#define HIGHER_HALF_PML4_START_INDEX                 511
+
+void do_ummap_user(uint64_t pgd) {
+    uint64_t *p_pml4, *p_pdptr, *p_pd, *p_pt, *p_page;
+    uint64_t *kp_pml4, *kp_pdptr, *kp_pd, *kp_pt, *kp_page;
+
+    p_pml4 = (uint64_t*)((uint64_t)(pgd & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
+    kp_pml4 = (uint64_t*)((uint64_t)(kernel_pgd & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
+
+    bool not_in_kernel = false;
+    for (unsigned int pml4_index = 0; pml4_index < HIGHER_HALF_PML4_START_INDEX; ++pml4_index) {
+        if ((p_pml4[pml4_index] & (~PAGE_ADDR_MASK))  == 0) continue;         /* check if valid */
+        p_pdptr = (uint64_t*)((p_pml4[pml4_index] & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
+        kp_pdptr = (uint64_t*)((kp_pml4[pml4_index] & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
+
+        for (unsigned int pdptr_index = 0; pdptr_index < ENTRY_NUM; ++pdptr_index) {
+            if ((p_pdptr[pdptr_index] & (~PAGE_ADDR_MASK))  == 0) continue;      /* check if valid */
+            
+            p_pd = (uint64_t*)((p_pdptr[pdptr_index] & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
+            kp_pd = kp_pdptr ? (uint64_t*)((kp_pdptr[pdptr_index] & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET) : NULL;
+
+            for (unsigned int pd_index = 0;  pd_index < ENTRY_NUM; ++pd_index) {
+                if ((p_pd[pd_index] & (~PAGE_ADDR_MASK))  == 0) continue;     /* check if valid */
+
+                p_pt = (uint64_t*)((p_pd[pd_index] & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
+                kp_pt = kp_pd ? (uint64_t*)((kp_pd[pd_index] & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET) : NULL;
+                
+                for (unsigned int pt_index = 0; pt_index < ENTRY_NUM; ++pt_index) {
+                    if ((p_pt[pt_index] & (~PAGE_ADDR_MASK))  == 0) continue;
+
+                    p_page = (uint64_t*)((p_pt[pt_index]  & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
+                    kp_page = kp_pt ? (uint64_t*)((kp_pt[pt_index]  & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET) : NULL;
+                }
+
+                if ((!kp_pt) && p_pt) {
+                    struct page_alloc pa = {p_pt, 1};
+                    memset(p_pt, 0, PAGE_SIZE);
+                    free_pages(&pa);
+                    p_pd[pd_index] = 0;
+                }
+            }
+
+            if ((!kp_pd) && p_pd) {
+                struct page_alloc pa = {p_pd, 1};
+                memset(p_pd, 0, PAGE_SIZE);
+                free_pages(&pa);
+                p_pdptr[pdptr_index] = 0;
+            }
+
+        }            
+
+        if ((!kp_pdptr) && p_pdptr) {
+            struct page_alloc pa = {p_pdptr, 1};
+            memset(p_pdptr, 0, PAGE_SIZE);
+            free_pages(&pa);
+            p_pml4[pml4_index] = 0;
+        }
+    }
 }
 
 void page_fault_handler(unsigned long error_code) {
     uint64_t address = getcr2();
+
+    // printk("_kernel_end: %x\n", (uint64_t)(&_kernel_end) - HIGHER_HALF_OFFSET);
     
     /* check error code */
     /* notice bit W indicates r or w op, skip here*/
-    printk("error_code: %u\n", error_code);
+    // printk("error_code: %u\n", error_code);
     if (((error_code & 0b1) == 0)           /* bit P not set */
     && ((error_code & 0b100) != 0)          /* bit U set */ 
     && ((error_code & (~0b111)) == 0)) {    /* other bit not set */
-        do_mmap(address);
+        /* check mappable region */
+        if (address < (uint64_t)&_kernel_end - HIGHER_HALF_OFFSET || address >= HIGHER_HALF_OFFSET) {
+            panic("Invalid virtual address to map: %x\n", address);
+        }
+
+        int r = 0;
+        struct mm_struct *mm = current_task_TCB->mm;
+        do_mmap(address, mm);
+
+        /* do load cr3 */
+        setcr3(mm->pgd);
 
         // do page fault, remap page
         // panic("Do page fault, error: %u, address: %x\n", error_code, address);

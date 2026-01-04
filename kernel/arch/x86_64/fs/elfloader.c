@@ -6,12 +6,9 @@
 #include <kernel/page.h>
 #include "../sched/task.h"
 #include "../mm/mm.h"
+#include "../mm/pagemanager.h"
 #include "elf.h"
 #include "elfloader.h"
-
-#define ELF_PAGESTART(_v) ((_v) & ~(PAGE_SIZE-1))
-#define ELF_PAGEOFFSET(_v) ((_v) & (PAGE_SIZE-1))
-#define ELF_PAGEALIGN(_v) (((_v) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
 
 static void read_elf(const char *elf_content, unsigned int len) {
     if (len == 0) {
@@ -132,7 +129,7 @@ static void read_elf(const char *elf_content, unsigned int len) {
     return;
 }
 
-static int _do_load_elf(char *elf_content) {
+static int _do_load_elf(char *elf_content, struct mm_struct *mm) {
     Elf64_Ehdr *elf_hdr = (Elf64_Ehdr* )elf_content;
 
     /* check magic */
@@ -157,7 +154,6 @@ static int _do_load_elf(char *elf_content) {
     }
 
     /* load elf program header */
-    struct mm_struct *mm = current_task_TCB->mm;
     Elf64_Phdr *p_hdr = elf_content + elf_hdr->e_phoff;
     for (unsigned int i=0; i<elf_hdr->e_phnum; ++i) {
         if (p_hdr[i].p_type != PT_LOAD)
@@ -169,9 +165,9 @@ static int _do_load_elf(char *elf_content) {
             return -1;
         }
         vma->vm_flags = p_hdr[i].p_type;
-        vma->vm_start = ELF_PAGESTART(p_hdr[i].p_vaddr);
-        vma->vm_end = ELF_PAGEALIGN(p_hdr[i].p_vaddr + p_hdr[i].p_memsz);
-        vma->vm_pgoff = p_hdr[i].p_offset >> PAGE_SHIFT;
+        vma->vm_start = p_hdr[i].p_vaddr;
+        vma->vm_end = p_hdr[i].p_vaddr + p_hdr[i].p_memsz;
+        vma->vm_pgoff = p_hdr[i].p_offset;
         vma->vm_mm = mm;
 
         if (!mm->mmap) {
@@ -181,12 +177,39 @@ static int _do_load_elf(char *elf_content) {
             list_add_tail(&vma->vma_list, &mm->mmap->vma_list);
         }
     }
+
+    /* add stack, use constants for now */
+    struct vm_area_struct *vma = (struct vm_area_struct *)kmalloc(sizeof(struct vm_area_struct));
+    unsigned int stack_page_num = 23;
+    vma->vm_flags = 0;
+    vma->vm_start = 0x00007ffffffdc000;
+    vma->vm_end = vma->vm_start + stack_page_num * PAGE_SIZE;
+    vma->vm_pgoff = vma->vm_end - vma->vm_start;
+    vma->vm_mm = mm;
+    if (!mm->mmap) {
+        mm->mmap = vma;
+        INIT_LIST_HEAD(&mm->mmap->vma_list);
+    } else {
+        list_add_tail(&vma->vma_list, &mm->mmap->vma_list);
+    }
+    /* alloc user stack */
+    for (uint64_t pg_index = 0; pg_index < stack_page_num; ++pg_index) {
+        do_mmap((uint64_t)vma->vm_start + pg_index * PAGE_SIZE, mm);
+    }
+    mm->rsp = vma->vm_end;
+    setcr3(mm->pgd);
+
+    mm->elf_content = elf_content;
+
+    unlock_scheduler();  /* matches lock_scheduler in kernel_exec */
+    get_to_ring3(elf_hdr->e_entry);
+    // printk("e_entry: %x\n", elf_hdr->e_entry);
+
     return 0;
 }
 
-int load_elf(fat12_t *fs, const char *name) {
+int load_elf(fat12_t *fs, const char *name, struct mm_struct *mm) {
     int r = 0;
-    lock_scheduler();
 
     uint8_t sec[BYTES_PER_SECTOR] = {0};
     int64_t size = fat12_get_file_size(fs, name);
@@ -195,7 +218,7 @@ int load_elf(fat12_t *fs, const char *name) {
         r = -1;
         goto out;
     }
-    printk("Get elf size: %u\n", size);
+    // printk("Get elf size: %u\n", size);
 
     uint8_t *file_content = (uint8_t *)kmalloc(size + 1);
     if (!file_content) {
@@ -215,15 +238,17 @@ int load_elf(fat12_t *fs, const char *name) {
 
     // read_elf(file_content, outlen);
 
-    if (_do_load_elf(file_content) != 0) {
-        printk("Error] Failed to load elf content\n");
+    if (_do_load_elf(file_content, mm) != 0) {
+        printk("[Error] Failed to load elf content\n");
         kfree(file_content);
         r = -1;
         goto out;
     }
+
+    // theoretically it never reach here
+    panic("If kernel reach here, it is in trouble\n");
     r = 0;
 out:
-    unlock_scheduler();
     return r;
 }
 

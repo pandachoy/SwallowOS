@@ -84,17 +84,17 @@ bool fat12_mount(fat12_t *fs) {
     fs->root_dir_sectors = ((fs->root_entry_count * BYTES_PER_ROOT_DIR) + (fs->bytes_per_sector - 1)) / fs->bytes_per_sector;
     fs->data_start_lba = fs->root_start_lba + fs->root_dir_sectors;
 
-    printk("bytes_per_sector: %u\n", fs->bytes_per_sector);
-    printk("sectors_per_cluster: %u\n", fs->sectors_per_cluster);
-    printk("reserved_sectors: %u\n", fs->reserved_sectors);
-    printk("num_fats: %u\n", fs->num_fats);
-    printk("root_dir_sectors: %u\n", fs->root_dir_sectors);
-    printk("total_sectors: %u\n", fs->total_sectors);
-    printk("sectors_per_fat: %u\n", fs->sectors_per_fat);
-    printk("fat_start_sector: %u\n", fs->fat_start_sector);
-    printk("root_start_lba: %u\n", fs->root_start_lba);
-    printk("root_dir_sectors: %u\n", fs->root_dir_sectors);
-    printk("data_start_lba: %u\n", fs->data_start_lba);
+    // printk("bytes_per_sector: %u\n", fs->bytes_per_sector);
+    // printk("sectors_per_cluster: %u\n", fs->sectors_per_cluster);
+    // printk("reserved_sectors: %u\n", fs->reserved_sectors);
+    // printk("num_fats: %u\n", fs->num_fats);
+    // printk("root_dir_sectors: %u\n", fs->root_dir_sectors);
+    // printk("total_sectors: %u\n", fs->total_sectors);
+    // printk("sectors_per_fat: %u\n", fs->sectors_per_fat);
+    // printk("fat_start_sector: %u\n", fs->fat_start_sector);
+    // printk("root_start_lba: %u\n", fs->root_start_lba);
+    // printk("root_dir_sectors: %u\n", fs->root_dir_sectors);
+    // printk("data_start_lba: %u\n", fs->data_start_lba);
     return true;
 }
 

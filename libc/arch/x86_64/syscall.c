@@ -1,3 +1,8 @@
+
+#if defined(__is_libk)
+
+#else
+
 #include <stddef.h>
 #include <stdint.h>
 #include "../../include/syscall.h"
@@ -33,3 +38,5 @@ int putchar(int ic) {
 int exit(int code) {
     return libc_do_syscall(5, code, NULL, NULL, NULL, NULL, NULL);
 }
+
+#endif

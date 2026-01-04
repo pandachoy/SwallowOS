@@ -20,6 +20,7 @@
 #include "../arch/x86_64/fs/fat.h"
 #include "../multiboot/multiboot.h"
 #include "../arch/x86_64/fs/elfloader.h"
+#include "../arch/x86_64/fs/exec.h"
 
 // #include "../../../libc/include/syscall.h"
 
@@ -81,34 +82,37 @@ extern volatile uint64_t *startframe;                /* 页帧起点，运行之
 // }
 
 /* test mm */
-#define MEM_SIZE (1024*1024)
-char MEM[MEM_SIZE] = { 0 };
+/* this big memory should not allocated with user elf */
+/* because the entry point of elf will be covered */
+/* try to use a small one if you persit to test */
+// #define MEM_SIZE (1024*1024)
+// char MEM[MEM_SIZE] = { 0 };
 
-#define M (16*16*16*16-1)
-#define A 41649
-#define C 31323
-long long lcg(long long x) {
-    return (A * x + C);
-}
-void test_mm(void) {
-    long long seed = 2342;
-    kmemory_init(MEM, MEM_SIZE);
-    void *slots[1024] = {0};
-    for (unsigned int i = 0; i < 1024; ++i) {
-        seed = lcg(seed) % 10001;
-        slots[i] = kmalloc(seed);
-        if (!slots[i]) {
-        printk("break at %u\n", i);
-        break;
-        }
-    }
+// #define M (16*16*16*16-1)
+// #define A 41649
+// #define C 31323
+// long long lcg(long long x) {
+//     return (A * x + C);
+// }
+// void test_mm(void) {
+//     long long seed = 2342;
+//     kmemory_init(MEM, MEM_SIZE);
+//     void *slots[1024] = {0};
+//     for (unsigned int i = 0; i < 1024; ++i) {
+//         seed = lcg(seed) % 10001;
+//         slots[i] = kmalloc(seed);
+//         if (!slots[i]) {
+//         printk("break at %u\n", i);
+//         break;
+//         }
+//     }
 
-    printk("mm check: %d\n", kmcheck());
-    for (unsigned int i = 0; i < 1024; ++i) {
-        if (slots[i]) 
-            kfree(slots[i]);
-    }
-}
+//     printk("mm check: %d\n", kmcheck());
+//     for (unsigned int i = 0; i < 1024; ++i) {
+//         if (slots[i]) 
+//             kfree(slots[i]);
+//     }
+// }
 
 /* test task */
 unsigned char ch_index = 0;
@@ -343,41 +347,29 @@ void test_fat(void) {
     printk("%s\n", buffer);
 }
 
-
-void test_elf(void) {
-    sti();
-    lock_scheduler();
-
+/* test elf */
+void test_elf() {
+    int r;
     fat12_t fs;
-    printk("mount res: %d\n", fat12_mount(&fs));
-    char buffer[4096] = {0};;
-    unsigned int outlen;
 
-    // const char *filename = "MAIN.C";
-    // printk("read res size: %d\n", fat12_get_file_size(&fs, filename));
-    // printk("read res: %d\n", fat12_read_file(&fs, filename, buffer, 1024, &outlen));
-    // printk("file content:\n");
-    // printk("%s\n", buffer);
-    printk("Read ELF %s\n", "HELLO");
-    printk("loading ret: %d\n", load_elf(&fs, "HELLO"));
+    lock_scheduler();
+    r = fat12_mount(&fs);
+    if (!r) {
+        panic("Failed to mount in task %d\n", current_task_TCB->task_id);
+    }
+    // printk("mount res: %d\n", r);
+    char buffer[4096] = {0};
+    unsigned int outlen;
     unlock_scheduler();
 
-    struct mm_struct *mm = current_task_TCB->mm;
-    printk("mm: %x     mm->mmap: %x\n", mm, mm->mmap);
-    unsigned int count = 0;
-    if (mm && mm->mmap) {
-        struct list_head *p = &mm->mmap->vma_list;
-        struct list_head *e = p;
-        do {
-            struct vm_area_struct *vma = container_of(p, struct vm_area_struct, vma_list);
-            if (vma) {
-             printk("[%u] vm_start: %x, vm_end: %x, vm_flags: %x, vm_pgoff: %x\n", count, vma->vm_start, vma->vm_end, vma->vm_flags, vma->vm_pgoff);
-            }
-            p = p->next;
-        } while (p != e);
+    r = kernel_exec(&fs, "HELLO", NULL, NULL);
+    if (r != 0) {
+        panic("Failed to exec Hello\n");
     }
+    printk("HELLO execed!\n");
 
-    for (unsigned int i=0; i<1e7; ++i);
+ 
+    for (;;);
 
 
 }
@@ -404,12 +396,14 @@ void kernel_main(void) {
     set_ring0_msr(do_syscall);
     kalloc_frame_init();
     init_scheduler();
-    for (unsigned int i = 0; i < 1; ++i) {
-        struct thread_control_block *tcb = create_task(user_work_wrapper);
+    for (unsigned int i = 0; i < 5; ++i) {
+        struct thread_control_block *tcb = create_task(test_elf);
     }
+    // smph = create_semaphore(2);
+    // create_task(user_work_wrapper);
     sti();
     kernel_idle_work();
- 
+    
 
     __asm__ volatile ("hlt");
 }
