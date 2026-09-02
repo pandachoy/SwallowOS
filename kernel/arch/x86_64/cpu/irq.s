@@ -8,7 +8,9 @@ irq_stub_0:
     iretq
 
 irq_stub_1:
+    push_all
     callq keyboard_handler
+    pop_all
     iretq
 
 irq_stub_6:

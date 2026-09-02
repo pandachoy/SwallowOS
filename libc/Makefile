@@ -13,7 +13,7 @@ EXEC_PREFIX?=$(PREFIX)
 INCLUDEDIR?=$(PREFIX)/include
 LIBDIR?=$(EXEC_PREFIX)/lib
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -no-pie -fno-pic -fomit-frame-pointer
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -no-pie -fno-pic -fomit-frame-pointer -mno-red-zone
 CPPFLAGS:=$(CPPFLAGS) -D__is_libc -Iinclude
 LIBK_CFLAGS:=$(CFLAGS)
 LIBK_CPPFLAGS:=$(CPPFLAGS) -D__is_libk

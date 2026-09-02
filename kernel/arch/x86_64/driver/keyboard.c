@@ -8,18 +8,18 @@
 
 #define KEYBOARD_BUFFER_SIZE     256
 volatile char keyboard_buffer[KEYBOARD_BUFFER_SIZE];
-volatile uint8_t key_buffer_pos = 0;
+// volatile uint8_t key_buffer_pos = 0;
+volatile uint8_t key_buffer_start = 0, key_buffer_end = 0;
 
 static char scancode_to_ascii(uint8_t scancode) {
     const char layout[] = "\x00\x1B" "1234567890-="
                          "\x08\tqwertyuiop[]\n"
-                         "\x00asdfghjkl;'`"
+                         "\x00" "asdfghjkl;'`"
                          "\x00\\zxcvbnm,./\x00"
                          "*\x00 ";
     return (scancode < sizeof(layout)) ? layout[scancode] : 0;
 }
 
-__attribute__((noreturn))
 void keyboard_handler(void) {
     uint8_t scancode = inb(KEYBOARD_DATA_PORT);
 
@@ -29,10 +29,15 @@ void keyboard_handler(void) {
     /* 扫描码转为ascii*/
     char c = scancode_to_ascii(scancode);
 
-    if (c != 0 && key_buffer_pos < KEYBOARD_BUFFER_SIZE - 1) {
-        keyboard_buffer[key_buffer_pos++] = c;
-        keyboard_buffer[key_buffer_pos] = '\0'; /* 字符串终止 */
+    IRQ_set_mask(0);
+    IRQ_set_mask(1);    
+    if (c != 0 && (key_buffer_end + 1) % KEYBOARD_BUFFER_SIZE != key_buffer_start) {
+        keyboard_buffer[key_buffer_end] = c;
+        key_buffer_end = (key_buffer_end + 1) % KEYBOARD_BUFFER_SIZE;
+        // keyboard_buffer[key_buffer_pos] = '\0'; /* 字符串终止 */
     }
+    IRQ_clear_mask(0);
+    IRQ_clear_mask(1);
     // keyboard_buffer[key_buffer_pos++] = 'c';
     // keyboard_buffer[key_buffer_pos] = '\0'; /* 字符串终止 */
 
@@ -42,4 +47,18 @@ out:
 
 void keyboard_init() {
     outb(KEYBOARD_IRQ_VECTOR, 0xFD);
+}
+
+int sys_getchar() {
+    // while (key_buffer_start == key_buffer_end);
+    IRQ_set_mask(0);
+    IRQ_set_mask(1);
+    if (key_buffer_start != key_buffer_end) {
+        int tmp = keyboard_buffer[key_buffer_start];
+        key_buffer_start = (key_buffer_start + 1) % KEYBOARD_BUFFER_SIZE;
+        return tmp;
+    }
+    IRQ_clear_mask(0);
+    IRQ_clear_mask(1);
+    return -1;
 }

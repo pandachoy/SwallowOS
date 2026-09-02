@@ -5,6 +5,8 @@
 #include <kernel/list.h>
 #include "../mm/mm.h"
 
+typedef long task_id_t;
+
 typedef enum {
     RUNNING,
     READY,
@@ -18,7 +20,7 @@ extern void *page_map_level4;
 extern uint64_t kernel_pgd;
 
 struct thread_control_block {
-    unsigned long task_id;
+    task_id_t task_id;
 
     struct page_alloc stack0;
     void* tss_rsp0;                         /* top of kernel stack to set on tss->rsp0*/ 

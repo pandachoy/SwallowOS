@@ -9,9 +9,8 @@
 #include <kernel/list.h>
 #include <kernel/malloc.h>
 #include <kernel/semaphore.h>
-#include <kernel/string.h>
+#include <string.h>
 #include <kernel/printk.h>
-#include <kernel/pic.h>
 #include "../arch/x86_64/mm/pagemanager.h"
 #include "../arch/x86_64/sched/task.h"
 #include "../arch/x86_64/cpu/cpu.h"
@@ -24,97 +23,28 @@
 
 // #include "../../../libc/include/syscall.h"
 
-/* test helloworld */
-void test_helloworld() {
-    printk("Hello, %s!\nHi!", "World");
-}
+// extern volatile uint8_t key_buffer_pos;
+// extern volatile char keyboard_buffer[256];
 
-/* test keyboard */
-extern volatile uint8_t key_buffer_pos;
-extern volatile char keyboard_buffer[256];
-void test_keyboard() {
-    while(1) {
-        if (key_buffer_pos > 0) {
-            // for (int i = 0; i < key_buffer_pos; i++) {
-            //     printk(keyboard_buffer[i]);
-            // }
-            printk("%s", keyboard_buffer);
-            key_buffer_pos = 0;
-        }
-    }
-
-}
-
-/* test page allocation */
 extern volatile uint64_t npages;                        /* npages表示可分配的页个数，因为链接后才能得到 _kernel_end 的值，所以无法在编译期间计算，要运行之后计算 */
 extern volatile uint64_t *frame_map;                 /* frame_map标记某个页是否被使用，要放置在_kernel_end，同样也要运行之后计算 */
 extern volatile uint64_t *startframe;                /* 页帧起点，运行之后确定值 */
-// void test_pagealloc() {
-//         pageframe_t page_array[200] = {0};
-//     unsigned int i = 0;
 
-//     int count = 0;
-//     for (i = 0; i < 200 ; ++i) {
-//         page_array[i] = kalloc_frame();
-//         if (!page_array[i]) {
-//             printk("No free pages left! %d\n", count);
-//             break;
-//         }
-//         count++;
-//     }
+// struct list_truc {
+//     int a;
+//     struct list_head demo_list;
+//     char b;
+// };
 
-//     printk("npages: %u\n", npages);
-//     printk("frame_map: %u\n", frame_map);
-//     printk("startframe: %u\n", startframe);
-
-//     kfree_frame(page_array[43]);
-//     kfree_frame(page_array[56]);
-//     kfree_frame(page_array[177]);
-//     count = 0;
-//     for (; i < 200; ++i) {
-//         page_array[i] = kalloc_frame();
-//         if (!page_array[i]) {
-//             printk("No free pages left! %d\n", count);
-//             break;
-//         }
-//         count++;
-//     }
-// }
-
-/* test mm */
-/* this big memory should not allocated with user elf */
-/* because the entry point of elf will be covered */
-/* try to use a small one if you persit to test */
 // #define MEM_SIZE (1024*1024)
 // char MEM[MEM_SIZE] = { 0 };
 
-// #define M (16*16*16*16-1)
-// #define A 41649
-// #define C 31323
-// long long lcg(long long x) {
-//     return (A * x + C);
-// }
-// void test_mm(void) {
-//     long long seed = 2342;
-//     kmemory_init(MEM, MEM_SIZE);
-//     void *slots[1024] = {0};
-//     for (unsigned int i = 0; i < 1024; ++i) {
-//         seed = lcg(seed) % 10001;
-//         slots[i] = kmalloc(seed);
-//         if (!slots[i]) {
-//         printk("break at %u\n", i);
-//         break;
-//         }
-//     }
-
-//     printk("mm check: %d\n", kmcheck());
-//     for (unsigned int i = 0; i < 1024; ++i) {
-//         if (slots[i]) 
-//             kfree(slots[i]);
-//     }
-// }
-
-/* test task */
+#define M (16*16*16*16-1)
+#define A 41649
+#define C 31323
+long long lcg(long long x) {
+    return (A * x + C);
+}
 unsigned char ch_index = 0;
 
 extern int irq_disable_counter;
@@ -156,7 +86,7 @@ static unsigned int list_size(struct list_head *list) {
 struct semaphore *smph = NULL;
 unsigned int smph_count = 0;
 
-void test_task(void) {
+void work(void) {
     char str[2] = { 0 };
     str[0] = 'A'; // + ch_index;
     ch_index = (ch_index + 1) % 26;
@@ -236,7 +166,6 @@ void test_task(void) {
     }
 }
 
-/* test ring3 */
 void print_hello() {
     while(1) {
         printk("hello, ring3\n");
@@ -277,13 +206,28 @@ void test_page_fault(void) {
 }
 
 void user_work_wrapper() {
+    lock_scheduler();
+    struct mm_struct *mm = kmalloc(sizeof(struct mm_struct));
+    if (!mm) {
+        panic("Failed to alloc for mm in user_work_wrapper\n");
+    }
+    memset(mm, 0, sizeof(struct mm_struct));
+    if (mm_init(mm) != 0) {
+        panic("Failed to init mm in user_work_wrapper\n");
+    }
+    uint64_t new_pgd = mm_dup_pgd(kernel_pgd);
+    if (new_pgd == 0) {
+        panic("Failed to dup pgd in user_work_wrapper\n");
+    }
+    mm->pgd = new_pgd;
+    current_task_TCB->mm = mm;
+    unlock_scheduler();
     get_to_ring3(test_page_fault);
 }
 
 extern void do_syscall();
 
 extern void *p_multiboot_info;
-void kernel_main(void);
 void print_valid_memory(multiboot_info_t *mbd) {
     if(!(mbd->flags >> 6 & 0x1)) {
         printk("invalid memory map");
@@ -301,57 +245,9 @@ void print_valid_memory(multiboot_info_t *mbd) {
     }
 }
 
-#include "../arch/x86_64/mm/ram.h"
-void test_pm(void) {
-    printk("kernel main: %u\n", kernel_main);
-    print_valid_memory(p_multiboot_info);
-
-    kalloc_frame_init();
-    printk("npages: %u\n", npages);
-    printk("ram_start: %u, ram_end: %u\n", ram_start, ram_end);
-
-    // printk("kernel_main physaddr: %u\n", get_physaddr(&page_map_level4, kernel_main));
-
-}
-
-/* test floppy disk */
-void test_floppy_disk(void) {
-    sti();
-    IRQ_set_mask(0);
-    floppy_init();
-    char buffer[512] = {0};
-    floppy_read_lba(1, buffer);
-    printk("%s\n", buffer);
-    buffer[1] = 'e';
-    floppy_write_lba(1, buffer);
-    for (unsigned int i=0; i<512; ++i) {
-        buffer[i] = 0;
-    }
-    floppy_read_lba(1, buffer);
-    printk("%s\n", buffer);
-}
-
-/* test fat */
-void test_fat(void) {
-    sti();
-    IRQ_set_mask(0);
-    floppy_init();
-
-    fat12_t fs;
-    printk("mount res: %d\n", fat12_mount(&fs));
-    char buffer[4096] = {0};;
-    uint32_t outlen;
-
-    printk("read res: %d\n", fat12_read_file(&fs, "DREAM.TXT", buffer, 1024, &outlen));
-    printk("file content:\n");
-    printk("%s\n", buffer);
-}
-
-/* test elf */
-void test_elf() {
+fat12_t fs;
+void init_fs() {
     int r;
-    fat12_t fs;
-
     lock_scheduler();
     r = fat12_mount(&fs);
     if (!r) {
@@ -362,13 +258,48 @@ void test_elf() {
     unsigned int outlen;
     unlock_scheduler();
 
-    r = kernel_exec(&fs, "HELLO", NULL, NULL);
+
+    while(1);
+}
+
+/* test elf */
+void test_elf() {
+    int r;
+    // fat12_t fs;
+
+
+    nano_sleep_until(get_timer_count() + 1500);
+
+    r = kernel_exec(&fs, "SHELL", NULL, NULL);
     if (r != 0) {
         panic("Failed to exec Hello\n");
     }
     printk("HELLO execed!\n");
 
- 
+    // // const char *filename = "MAIN.C";
+    // // printk("read res size: %d\n", fat12_get_file_size(&fs, filename));
+    // // printk("read res: %d\n", fat12_read_file(&fs, filename, buffer, 1024, &outlen));
+    // // printk("file content:\n");
+    // // printk("%s\n", buffer);
+    // printk("Read ELF %s\n", "HELLO");
+    // printk("loading ret: %d\n", load_elf(&fs, "HELLO", current_task_TCB->mm));
+    // unlock_scheduler();
+
+    // struct mm_struct *mm = current_task_TCB->mm;
+    // printk("mm: %x     mm->mmap: %x\n", mm, mm->mmap);
+    // unsigned int count = 0;
+    // if (mm && mm->mmap) {
+    //     struct list_head *p = &mm->mmap->vma_list;
+    //     struct list_head *e = p;
+    //     do {
+    //         struct vm_area_struct *vma = container_of(p, struct vm_area_struct, vma_list);
+    //         if (vma) {
+    //          printk("[%u] vm_start: %x, vm_end: %x, vm_flags: %x, vm_pgoff: %x\n", count, vma->vm_start, vma->vm_end, vma->vm_flags, vma->vm_pgoff);
+    //         }
+    //         p = p->next;
+    //     } while (p != e);
+    // }
+
     for (;;);
 
 
@@ -390,20 +321,243 @@ void kernel_main(void) {
     NMI_disable();
 
 
+    // uint64_t phy_addr = get_physaddr(&page_map_level4, (const void*)kernel_main);
+    // printk("kernel_main: %x\n", phy_addr);
+
+
     floppy_init();
+    // sti();
+    // lock_scheduler();
+    // // floppy_init();
+    // unlock_scheduler();
+    // cli();
+    // kalloc_frame_init();
+    // sti();
+    // test_elf();
+
+    // floppy_read_lba(0, buffer);
+
+    // floppy_read_lba(3, buffer);
+
+    // floppy_read_lba(25, buffer);
+    // floppy_read_lba(19, buffer);
+    // for (unsigned int i=0; i<512; ++i) {
+    //     printk("%u ", buffer[i]);
+    // }
+
+
+
+    // char buffer[512] = {0};
+    // floppy_read_lba(1, buffer);
+    // printk("%s\n", buffer);
+    // buffer[1] = 'e';
+    // floppy_write_lba(1, buffer);
+    // for (unsigned int i=0; i<512; ++i) {
+    //     buffer[i] = 0;
+    // }
+    // floppy_read_lba(1, buffer);
+    // printk("%s\n", buffer);
+    
+    // printk("kernel main: %u\n", kernel_main);
+    // print_valid_memory(p_multiboot_info);
+
+    // kalloc_frame_init();
+    // printk("npages: %u\n", npages);
+    // printk("ram_start: %u, ram_end: %u\n", ram_start, ram_end);
+
+    // printk("kernel_main physaddr: %u\n", get_physaddr(&page_map_level4, kernel_main));
 
     /* set ring0 msr */
     set_ring0_msr(do_syscall);
     kalloc_frame_init();
     init_scheduler();
-    for (unsigned int i = 0; i < 5; ++i) {
-        struct thread_control_block *tcb = create_task(test_elf);
+    for (unsigned int i = 0; i < 1; ++i) {
+        create_task(init_fs);
+        create_task(test_elf);
+        // tcb = create_task(print_hello);
     }
     // smph = create_semaphore(2);
     // create_task(user_work_wrapper);
     sti();
     kernel_idle_work();
     
+
+    /* get to ring3 */
+    // get_to_ring3(print_hello);
+    // get_to_ring0();
+
+    /* timer */
+    // for (unsigned int i = 0; i < UINT64_MAX; ++i) {
+    //     if (i % 10000000 == 0)
+    //         printk("%u ", get_timer_count());
+    // }
+
+    /* tasks */
+    // init_scheduler();
+    // for (unsigned int i = 0; i < 8; ++i) {
+    //     create_task(work);
+    // }
+    // smph = create_semaphore(2);
+
+    // sti();
+    // kernel_idle_work();
+
+    /* test */
+    // terminal_write("abc\n", 3);
+    // printk("Hello, world!\n");
+
+    /* keyboard demo */
+    // while(1) {
+    //     if (key_buffer_pos > 0) {
+    //         // for (int i = 0; i < key_buffer_pos; i++) {
+    //         //     printk(keyboard_buffer[i]);
+    //         // }
+    //         printk("%s", keyboard_buffer);
+    //         key_buffer_pos = 0;
+    //     }
+    // }
+
+    /* page management demo */
+    // pageframe_t page_array[200] = {0};
+    // unsigned int i = 0;
+
+    // int count = 0;
+    // for (i = 0; i < 200 ; ++i) {
+    //     page_array[i] = kalloc_frame();
+    //     if (!page_array[i]) {
+    //         printk("No free pages left! %d\n", count);
+    //         break;
+    //     }
+    //     count++;
+    // }
+
+    // printk("npages: %u\n", npages);
+    // printk("frame_map: %u\n", frame_map);
+    // printk("startframe: %u\n", startframe);
+
+    // kfree_frame(page_array[13]);
+    // kfree_frame(page_array[5]);
+    // kfree_frame(page_array[24]);
+
+    // for (unsigned int i = 0; i < (count + 64) / 64; ++i) {
+    //     printk("%u\n", frame_map[i]);
+    // }
+    // unsigned int index = 17;
+    // frame_map[index/64] &= ~(1 << (index % 64));
+    // for (unsigned int i = 0; i < (count + 64) / 64; ++i) {
+    //     printk("%u\n", frame_map[i]);
+    // }
+    // printk("%u\n", (frame_map[index / 64] & (1 << (index % 64)))== 0 ? 0 : 1);
+
+    // count = 0;
+    // for (; i < 200; ++i) {
+    //     page_array[i] = kalloc_frame();
+    //     if (!page_array[i]) {
+    //         printk("No free pages left! %d\n", count);
+    //         break;
+    //     }
+    //     count++;
+    // }
+
+    /* list demo */
+    // struct list_truc a[10];
+    // for (unsigned int i = 0; i < 10; ++i) {
+    //     a[i].a = i;
+    //     a[i].b = i * 2;
+    // }
+    // struct list_head mylist;
+    // INIT_LIST_HEAD(&mylist);
+    // list_add(&a[4].demo_list, &mylist);
+    // list_add(&a[5].demo_list, &a[4].demo_list);
+    // list_add(&a[6].demo_list, &a[4].demo_list);
+    // list_add(&a[8].demo_list, &a[5].demo_list);
+    // printk("%d %d %d %d\n", &a[4], &a[5], &a[6], &a[8]);
+    // printk("%d\n", container_of((container_of(&a[4].demo_list, struct list_truc, demo_list))->demo_list.next, struct list_truc, demo_list));
+    // printk("%d\n", container_of((container_of(&a[5].demo_list, struct list_truc, demo_list))->demo_list.next, struct list_truc, demo_list));
+    // printk("%d\n", container_of((container_of(&a[6].demo_list, struct list_truc, demo_list))->demo_list.next, struct list_truc, demo_list));
+    // printk("%d\n", container_of((container_of(&a[8].demo_list, struct list_truc, demo_list))->demo_list.next, struct list_truc, demo_list));
+    // struct list_head *p;
+    // list_for_each(p, &mylist) {
+    //     struct list_truc *pp = container_of(p, struct list_truc, demo_list);
+    //     printk("[%d]->", pp->a);
+    // }
+    // printk("\n");
+    
+    // list_del(&a[6].demo_list);
+    // printk("\n");
+    // printk("%d\n", container_of((container_of(&a[4].demo_list, struct list_truc, demo_list))->demo_list.next, struct list_truc, demo_list));
+    // printk("%d\n", container_of((container_of(&a[5].demo_list, struct list_truc, demo_list))->demo_list.next, struct list_truc, demo_list));
+    // printk("%d\n", container_of((container_of(&a[6].demo_list, struct list_truc, demo_list))->demo_list.next, struct list_truc, demo_list));
+    // printk("%d\n", container_of((container_of(&a[8].demo_list, struct list_truc, demo_list))->demo_list.next, struct list_truc, demo_list));
+    // list_for_each(p, &mylist) {
+    //     struct list_truc *pp = container_of(p, struct list_truc, demo_list);
+    //     printk("[%d]->", pp->a);
+    // }
+    // printk("\n");
+    // list_add_tail(&a[7].demo_list, &mylist);
+    // list_for_each(p, &mylist) {
+    //     struct list_truc *pp = container_of(p, struct list_truc, demo_list);
+    //     printk("[%d]->", pp->a);
+    // }
+    // printk("\n");
+    
+    // do {
+    //     struct list_truc *pp = container_of(p, struct list_truc, demo_list);
+    //     printk("pp->a: %d, pp->b: %d\n", (int)pp->a, (int)pp->b);
+    //     p = p->next;
+    // } while (p != &a[5].demo_list);
+    // printk("%d %d %d %d %d\n", a[5].a, a[5].b, a[5].demo_list.next, a[5].demo_list.prev, &a[5].demo_list);
+    
+    /* mm demo */
+    // pageframe_t pg = kalloc_frame();
+    // kmemory_init(pg, PAGE_SIZE);
+    // void *a1 = kmalloc(100);
+    // void *a2 = kmalloc(10);
+    // void *a3 = kmalloc(57);
+    // void *a4 = kmalloc(1203);
+    // printk("a1: %u\n", a1);
+    // printk("a2: %u\n", a2);
+    // printk("a3: %u\n", a3);
+    // printk("a4: %u\n", a4);
+
+    // kfree(a3);
+    // kfree(a4);
+    // kfree(a1);
+    // kfree(a2);
+
+    // lock_scheduler();
+    // kalloc_frame_init();
+
+    // long long seed = 2342;
+
+    // // kmemory_init(MEM, MEM_SIZE);
+    // void *slots[1024] = {0};
+    // size_t thres = 124735;
+    // for (unsigned int i = 0; i < 1024; ++i) {
+    // retry:
+    //     seed = lcg(seed) % thres;
+    //     if (seed == 0) seed = 1;
+    //     slots[i] = kmalloc(seed);
+    //     printk("[alloc %u] ", seed);
+    //     if (!slots[i]) {
+    //         if (thres != 1) {
+    //             thres /= 2;
+    //             printk("retry ");
+    //             goto retry;
+    //         }
+    //         printk("break at %u\n", i);
+    //         break;
+    //     }
+    // }
+
+    // printk("mm check1: %d\n", kmcheck());
+    // for (unsigned int i = 0; i < 1024; ++i) {
+    //     if (slots[i]) 
+    //         kfree(slots[i]);
+    // }
+    // printk("mm check2: %d\n", kmcheck());
+    // printk("mm free check: %d\n", km_freecheck());
+    // unlock_scheduler();
 
     __asm__ volatile ("hlt");
 }

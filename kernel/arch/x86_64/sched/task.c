@@ -25,6 +25,8 @@ const uint64_t TCB_mm_offset = offset_of(struct thread_control_block, mm);
 const uint64_t TCB_rsp0_offset = offset_of(struct thread_control_block, rsp0);
 const uint64_t TCB_tss_rsp0_offset = offset_of(struct thread_control_block, tss_rsp0);
 
+extern volatile uint64_t tss_rsp0;  /* defined in boot.S, the hardware TSS rsp0 field */
+
 
 uint64_t kernel_pgd = NULL;
 
@@ -51,7 +53,7 @@ void kernel_idle_work(void) {
         }
 
 
-        printk("idle work {%u %u} ", when, get_timer_count());
+        printk("idle work {%u %u}\n", when, get_timer_count());
         printk("(");
         if (ready_tcb_list) {
             struct list_head *p = ready_tcb_list;
@@ -72,23 +74,27 @@ struct thread_control_block *kernel_idle_task = NULL;
 
 void kernel_clean_work(void) {
     struct thread_control_block *task = NULL;
-    lock_stuff();
+        lock_stuff();
 
-    while (terminated_task_list != NULL) {
-        task = container_of(terminated_task_list, struct thread_control_block, tcb_list);
-        if (terminated_task_list == terminated_task_list->next)
-            terminated_task_list = NULL;
-        else {
-            terminated_task_list = terminated_task_list->next;
-            list_del(&task->tcb_list);
+        while (terminated_task_list != NULL) {
+            task = container_of(terminated_task_list, struct thread_control_block, tcb_list);
+            if (terminated_task_list == terminated_task_list->next)
+                terminated_task_list = NULL;
+            else {
+                terminated_task_list = terminated_task_list->next;
+                list_del(&task->tcb_list);
+            }
+            printk("task %u terminated\n", task->task_id);
+            if (task->mm) {
+                do_ummap_user(task->mm->pgd);
+                mm_clean(task->mm);
+                kfree(task->mm);
+            }
+            free_pages(&task->stack0);
+            kfree(task);
         }
-        printk("task %u terminated\n", task->task_id);
-        // mm_clean(task->mm);
-        free_pages(&task->stack0);
-        kfree(task);
-    }
-    block_task(PAUSED);
-    unlock_stuff();
+        block_task(PAUSED);
+        unlock_stuff();
 }
 struct thread_control_block *kernel_clean_task = NULL;
 
@@ -105,7 +111,11 @@ void init_scheduler(void) {
     kmemory_init(tcb_mem,TCB_MEM_SIZE);
     kernel_idle_task = (struct thread_control_block*)kmalloc(sizeof(struct thread_control_block));
     kernel_idle_task->task_id = 0;
-    kernel_idle_task->rsp0 = 0;
+    /* allocate a proper kernel stack for the idle task */
+    kernel_idle_task->stack0 = alloc_pages(KERNEL_TASK_STACK_PAGE_NUM);
+    kernel_idle_task->rsp0 = (uint64_t)kernel_idle_task->stack0.page
+                           + kernel_idle_task->stack0.npages * PAGE_SIZE;
+    kernel_idle_task->tss_rsp0 = kernel_idle_task->rsp0;
     kernel_idle_task->state = RUNNING;
     kernel_idle_task->time_used = 0;
     current_task_TCB = kernel_idle_task;
@@ -116,7 +126,10 @@ void init_scheduler(void) {
     ready_tcb_list = NULL;
     paused_task_list = &kernel_clean_task->tcb_list;
     INIT_LIST_HEAD(paused_task_list);
+
 }
+
+
 
 #define PUSH_STACK(s, v) \
     s-=sizeof(uint64_t);*(uint64_t*)(s)=v
@@ -142,16 +155,9 @@ struct thread_control_block *create_task(void (*ent)) {
         new_task->task_id = ++task_id_counter;
         new_task->state = READY;
         new_task->time_used = 0;
-
-        /* init stack */
-        PUSH_STACK(new_task->rsp0, ent); /* ret function */
+        PUSH_STACK(new_task->rsp0, ent);
         PUSH_STACK(new_task->rsp0, task_start_up);
-        PUSH_STACK(new_task->rsp0, 0);   /* rax */
-        PUSH_STACK(new_task->rsp0, 0);   /* rbx */
-        PUSH_STACK(new_task->rsp0, 0);   /* rcx */
-        PUSH_STACK(new_task->rsp0, 0);   /* rsi */
-
-
+        PUSH_STACK(new_task->rsp0, 0x202);    /* IF=1 when poped */
         /* add to ready list */
         if (!ready_tcb_list) {
             ready_tcb_list = &(new_task->tcb_list);
@@ -191,6 +197,8 @@ void schedule() {
         list_del(&next_task->tcb_list);
         time_slice_remaining = TIME_SLICE_LENGTH;
         switch_to_task(next_task);
+
+        tss_rsp0 = (uint64_t)current_task_TCB->tss_rsp0;
     } else {
         if (current_task_TCB->state == RUNNING)
             return;
@@ -226,7 +234,7 @@ void unlock_scheduler() {
 
 void block_task(state_t reason) {
     lock_scheduler();
-    if (current_task_TCB == kernel_idle_work) {
+    if (current_task_TCB == kernel_idle_task) {
         unlock_scheduler();
         return;
     }
@@ -266,28 +274,31 @@ void block_task(state_t reason) {
 void unblock_task(struct thread_control_block *task) {
     lock_scheduler();
 
-    /* traverse these blocked list */
+    int found = 0;
     struct list_head **blocked_lists[] = {&sleeping_task_list, &paused_task_list};
     for (unsigned int i = 0; i < sizeof(blocked_lists)/sizeof(blocked_lists[0]); ++i) {
-        if (&task->tcb_list == (*blocked_lists[i])) {  /* if the task stands first at blocked_list */
+        if ((*blocked_lists[i]) && &task->tcb_list == (*blocked_lists[i])) {
             if ((*blocked_lists[i])->next == *blocked_lists[i])
                 *blocked_lists[i] = NULL;
             else
                 *blocked_lists[i] = (*blocked_lists[i])->next;
+            found = 1;
+            break;
         }
     }
 
-    list_del(&task->tcb_list);
-    task->state = READY;
-    if (ready_tcb_list) {
-        list_add_tail(&task->tcb_list, ready_tcb_list);
-    } else {
-        ready_tcb_list = &task->tcb_list;
-        INIT_LIST_HEAD(ready_tcb_list);
+    if (found) {
+        list_del(&task->tcb_list);
+        task->state = READY;
+        if (ready_tcb_list) {
+            list_add_tail(&task->tcb_list, ready_tcb_list);
+        } else {
+            ready_tcb_list = &task->tcb_list;
+            INIT_LIST_HEAD(ready_tcb_list);
+        }
     }
     unlock_scheduler();
 }
-
 void lock_stuff(void) {
 #ifndef SMP
     // cli();
@@ -326,6 +337,12 @@ void nano_sleep_until(uint64_t when) {
     current_task_TCB->sleep_expiry = when;
     block_task(SLEEPING);
     unlock_stuff();
+    
+    /* 这里为什么要调用sti打开中断，原因如下 */
+    /* 此处任务切换不是时钟中断切换，因此在上文中，因此没有将rlags压栈 */
+    /* 当后续中断sleep超时重新到就绪队列后，注意，由于是中断门触发，当前IF被清0, switch_to_task的ret也并不会弹出什么rflags（因为压根没有压栈） */
+    /* 因此此处恢复后， if仍然为0，需要主动调用sti打开 */
+    sti();
 }
 
 void terminate_task(void) {

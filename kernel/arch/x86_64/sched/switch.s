@@ -11,24 +11,13 @@
 .type switch_to_task, @function
 switch_to_task:
 
-    # save previous task's state
-    # Notes:
-    # For cdecl; rdi are already saved by the caller and don't need to be saved again
-    # rip is already saved on the stack by the caller's "CALL" instruction
-    # The task isn't able to change CR3 so it doesn't need to be saved
-    # Segment registers are constants (while running kernel code) so they don't need to be saved
-    push %rax
-    push %rbx
-    push %rcx
-    push %rsi
+    pushfq
+    cli
 
     call update_time_used
 
     # load current_task_TCB
     mov current_task_TCB(%rip), %rsi
-    # set current task's state
-    mov TCB_state_offset(%rip), %rcx
-    mov $READY, (%rsi, %rcx, 1)
 
     # save rsp to current_task_TCB
     mov TCB_rsp0_offset(%rip), %rcx
@@ -45,30 +34,24 @@ switch_to_task:
     mov TCB_rsp0_offset(%rip), %rcx
     mov (%rsi, %rcx, 1), %rsp
 
-    # save current_task_TCB->tss_rsp0 to tss_rsp0
-    mov TCB_tss_rsp0_offset(%rip), %rcx
-    mov (%rsi, %rcx, 1), %rcx
-    mov %rcx, tss_rsp0
 
     # load mm->pgd
     mov TCB_mm_offset(%rip), %rcx
     mov (%rsi, %rcx, 1), %rsi           # load mm into %rsi
     cmp $0, %rsi
-    je .doneVAS
+    je .restore_kernel_pgd
     # read pgd
     mov mm_pgd_offset(%rip), %rcx
     mov (%rsi, %rcx, 1), %rax
-    # compare virtual address
+    mov %rax, %cr3
+    jmp .doneVAS
+.restore_kernel_pgd:
+    mov kernel_pgd(%rip), %rax
     mov %rax, %cr3
 .doneVAS:
 
-#.update_tss_rsp0:
-    #mov %rsp, tss_rsp0
 
-    pop %rsi
-    pop %rcx
-    pop %rbx
-    pop %rax
+    popf
     ret
 
 

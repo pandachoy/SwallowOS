@@ -25,6 +25,7 @@ do_syscall:
     mov (%rbx, %r12, 1), %rsp
 
     /* syscall number is stored in rax */
+    push %r11                            # save user RFLAGS (for sysretq)
     push %rcx
     mov %r10, %rcx
     mov %rax, %rbx
@@ -34,12 +35,18 @@ do_syscall:
     /* syscall result will be stored in rax */
     call (%rbx)
     pop %rcx
+    pop %r11                             # restore user RFLAGS
 
     /* save kernel stack */
     mov current_task_TCB(%rip), %rbx
     mov TCB_rsp0_offset(%rip), %r12
     mov %rsp, (%rbx, %r12, 1)
 
+    /* CRITICAL: disable interrupts before loading user stack.
+       If an interrupt fires between loading user rsp and sysretq,
+       the CPU pushes the iret frame onto the USER stack, corrupting it.
+       sysretq restores RFLAGS from r11 (re-enabling IF in ring 3). */
+    cli
     /* load user stack */
     mov current_task_TCB(%rip), %rbx
     mov TCB_mm_offset(%rip), %r12
@@ -47,7 +54,7 @@ do_syscall:
     cmp $0, %rbx
     je .load_user_stack_done
     mov mm_rsp_offset(%rip), %r12
-    mov (%rbx, %r12, 1), %rsp
+    mov (%rbx, %r12, 1), %rsp           # load user stack
 .load_user_stack_done:
 
     /* restore user regs */

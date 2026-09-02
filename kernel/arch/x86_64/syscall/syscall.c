@@ -34,6 +34,10 @@ int sys_putchar(int ic) {
 }
 
 extern int sys_exit(int code);
+extern int sys_open(const char *filepath, int flags);
+extern int sys_exec(const char *exe_name);
+extern int sys_getchar();
+extern task_id_t sys_fork();
 
 void * syscalls[] = {
     sys_read,
@@ -41,6 +45,9 @@ void * syscalls[] = {
     sys_get_task_id,
     sys_get_rsp0,
     sys_putchar,
-    sys_exit
+    sys_exit,
+    sys_exec,
+    sys_getchar,
+    sys_fork
 };
 

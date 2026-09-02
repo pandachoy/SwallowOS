@@ -13,7 +13,7 @@ EXEC_PREFIX?=$(PREFIX)
 BOOTDIR?=$(EXEC_PREFIX)/boot
 INCLUDEDIR?=$(PREFIX)/include
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -no-pie -fno-pic -fomit-frame-pointer
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -no-pie -fno-pic -fomit-frame-pointer -mno-red-zone
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LDFLAGS:=$(LDFLAGS)
 LIBS:=$(LIBS) -nostdlib -lgcc -lk

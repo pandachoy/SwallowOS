@@ -39,4 +39,8 @@ int exit(int code) {
     return libc_do_syscall(5, code, NULL, NULL, NULL, NULL, NULL);
 }
 
+int getchar() {
+    return libc_do_syscall(7, NULL, NULL, NULL, NULL, NULL, NULL);
+}
+
 #endif

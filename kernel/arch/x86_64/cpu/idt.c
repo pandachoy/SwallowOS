@@ -3,6 +3,8 @@
 #include <kernel/idt.h>
 #include <kernel/tty.h>
 #include <kernel/keyboard.h>
+#include <kernel/printk.h>
+#include "cpu.h"
 
 #define IDT_MAX_DESCRIPTORS 			256
 #define IDT_CPU_EXCEPTION_COUNT			32
@@ -42,11 +44,34 @@ static idt_entry_t idt[IDT_MAX_DESCRIPTORS];
 
 static idtr_t idtr;
 
+struct exc_frame {
+    uint64_t rip;
+    uint64_t cs;
+    uint64_t rflags;
+    uint64_t rsp;
+    uint64_t ss;
+};
+
 __attribute__((noreturn))
-void exception_handler(void) {
-    // __asm__ volatile ("cli");
-    // __asm__ volatile ("sti");
+void exception_handler(uint64_t vector, uint64_t error_code, struct exc_frame *frame) {
     cli();
+    uint64_t cr2 = getcr2();
+    uint64_t cur_rsp;
+    __asm__ volatile ("mov %%rsp, %0" : "=r"(cur_rsp));
+    printk("[kernel] exception! vec=%u err=%x cr2=%x rip=%x cs=%x rflags=%x rsp=%x\n",
+           (unsigned)vector, (unsigned)error_code, (unsigned)cr2,
+           (unsigned)frame->rip, (unsigned)frame->cs,
+           (unsigned)frame->rflags, (unsigned)frame->rsp);
+    /* dump 20 qwords starting well below the exception frame to see
+       what was on the task kernel stack before the fault */
+    uint64_t *p = (uint64_t*)(cur_rsp + 24);  /* skip stub pushes + call ret */
+    printk("stack dump (from exc handler rsp):\n");
+    for (int i = 0; i < 24; ++i) {
+        uint64_t val = p[i];
+        printk("  [%x] %x\n", (unsigned)(uintptr_t)&p[i], (unsigned)val);
+        if (val == 0 && i > 16) break;
+    }
+    hlt();
     sti();
 }
 

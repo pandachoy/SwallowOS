@@ -3,8 +3,14 @@
 #include <kernel/printk.h>
 #include "../driver/floppy.h"
 #include "fat.h"
+#include "kernel/malloc.h"
 
-#define BYTES_PER_ROOT_DIR            32
+#define BYTES_PER_ENTRY                                32
+#define LAST_LONG_ENTRY                              0x40
+
+#define INODE_LIMIT                                 65535
+#define ROOT_INO                                        2
+#define ISDIR(ent)            (ent && (ent->attr & 0x10))
 
 /* directory struct */
 typedef struct __attribute__((packed)) {
@@ -22,6 +28,23 @@ typedef struct __attribute__((packed)) {
     uint16_t first_cluster_number_low;
     uint32_t size;
 } dirent_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t order;
+    char name_low[10];
+    uint8_t attr;
+    uint8_t zero_1;
+    uint8_t check_sum;
+    char name_mid[12];
+    uint16_t zero_2;
+    uint8_t name_hi[4];
+} long_file_name_ent_t;
+
+static inline int get_unique_ino() {
+    static int ino_candidate = ROOT_INO + 1;
+    if (ino_candidate >= INODE_LIMIT) return -1;
+    return ino_candidate++;
+}
 
 static bool read_sector(uint32_t lba, uint8_t *buf) {
     return floppy_read_lba(lba, buf);
@@ -81,7 +104,7 @@ bool fat12_mount(fat12_t *fs) {
     fs->sectors_per_fat = fat->table_size_16;
     fs->fat_start_sector = fs->reserved_sectors;
     fs->root_start_lba = fs->fat_start_sector + fs->num_fats * fs->sectors_per_fat;
-    fs->root_dir_sectors = ((fs->root_entry_count * BYTES_PER_ROOT_DIR) + (fs->bytes_per_sector - 1)) / fs->bytes_per_sector;
+    fs->root_dir_sectors = ((fs->root_entry_count * BYTES_PER_ENTRY) + (fs->bytes_per_sector - 1)) / fs->bytes_per_sector;
     fs->data_start_lba = fs->root_start_lba + fs->root_dir_sectors;
 
     // printk("bytes_per_sector: %u\n", fs->bytes_per_sector);
@@ -126,6 +149,52 @@ static void upper_padding(const char *in, char *name8, char *ext3) {
     }   
 }
 
+#define CHECK_AND_ASSIGN_LONG_NAME(buf, ch) \
+    { \
+        if((ch) == '\0' || (ch)==(uint8_t)0xFF)break; \
+        *(buf)=(ch); \
+        (buf)++; \
+        count++; \
+    }
+
+
+static int check_long_file_name(long_file_name_ent_t *ent, const char *name) {
+    if (!ent || !(ent->order & LAST_LONG_ENTRY)) return -1;        /* it's not the last long entry */
+    if (!name) return -1;
+
+    unsigned int long_file_name_entries_num = ent->order - LAST_LONG_ENTRY;
+    char *buffer = (char *)kmalloc(long_file_name_entries_num * 13);        /* only support ascii for now and there 13 characters per entry */
+    char *buf_pos = buffer;
+    size_t count = 0;
+
+    for (int i = long_file_name_entries_num - 1; i >= 0; --i) {
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_low[0]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_low[2]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_low[4]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_low[6]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_low[8]);
+
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_mid[0]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_mid[2]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_mid[4]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_mid[6]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_mid[8]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_mid[10]);
+
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_hi[0]);
+        CHECK_AND_ASSIGN_LONG_NAME(buf_pos, ent[i].name_hi[2]);
+    }
+
+    count = buf_pos - buffer;
+    if (strlen(name) != count) { kfree(buffer); return -1; }                /* different length */
+
+    for (unsigned int i = 0; i < count; ++i) {
+        if (name[i] != buffer[i]) { kfree(buffer); return -1; }
+    }
+    kfree(buffer);
+    return 0;
+}
+
 static dirent_t* find_by_name(fat12_t *fs, const char *name83, uint8_t sec[BYTES_PER_SECTOR]) {
     char n8[8];     /* basename */
     char e3[3];     /* extension */
@@ -134,10 +203,18 @@ static dirent_t* find_by_name(fat12_t *fs, const char *name83, uint8_t sec[BYTES
     for (uint32_t i=0; i<fs->root_dir_sectors; ++i) {
         if (!read_sector(fs->root_start_lba + i, sec)) return false;
         dirent_t *ents = (dirent_t*)sec;
-        for (unsigned int j=0; j<BYTES_PER_SECTOR/BYTES_PER_ROOT_DIR; ++j) {
+        for (unsigned int j=0; j<BYTES_PER_SECTOR/BYTES_PER_ENTRY; ++j) {
             if (ents[j].name[0] == 0x00) return false;
             if ((uint8_t)ents[j].name[0] == 0xE5) continue;           /* unused */
-            if ((ents[j].attr & 0x0F) == 0x0F) continue;              /* long file name, not supported here */
+            
+            /* check long name */
+            if ((ents[j].attr & 0x0F) == 0x0F) {
+                if (check_long_file_name(&ents[j], name83) == 0) {
+                    return ents + j + ((long_file_name_ent_t*)ents + j)->order - LAST_LONG_ENTRY;
+                }
+            }
+            
+            /* compare short name*/
             if (memcmp((uint8_t*)ents[j].name, (uint8_t*)n8, 8) == 0 && memcmp((uint8_t*)ents[j].ext, (uint8_t*)e3, 3) == 0) {      /* file found */
                 return ents + j;
             }

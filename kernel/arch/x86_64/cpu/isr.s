@@ -1,18 +1,28 @@
-.macro isr_err_stub p
-isr_stub_\p:
-    call exception_handler
-    iretq
-.endm
-
 .macro isr_no_err_stub p
 isr_stub_\p:
-    call exception_handler
-    iretq
+    pushq $0                 # fake error code -> uniform stack layout
+    pushq $\p                # vector number
+    jmp exception_common
+.endm
+
+.macro isr_err_stub p
+isr_stub_\p:
+    pushq $\p                # vector number (real error code already on stack)
+    jmp exception_common
 .endm
 
 .include "arch/x86_64/cpu/cpu.inc"
 
 .section .text
+exception_common:
+    movq 0(%rsp), %rdi       # vector
+    movq 8(%rsp), %rsi       # error code
+    leaq 16(%rsp), %rdx      # pointer to iretq frame (rip, cs, rflags, rsp, ss)
+    call exception_handler
+    popq %rax                # discard vector
+    popq %rax                # discard error code
+    iretq
+
 isr_no_err_stub 0
 isr_no_err_stub 1
 isr_no_err_stub 2
@@ -30,6 +40,7 @@ isr_err_stub    13
 
 isr_stub_14:
     mov (%rsp), %rdi
+    lea 8(%rsp), %rsi
     push_all
     call page_fault_handler
     pop_all

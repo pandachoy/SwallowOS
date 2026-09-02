@@ -22,27 +22,32 @@ LIBS:=$(LIBS) $(DESTDIR)$(LIBDIR)/libc.a
 ARCHDIR=../libc/arch/$(HOSTARCH)
 
 OBJS=\
-helloworld/hello.o
+hello_proj/hellohellohello.o \
+shell_proj/shell.o
 
 LINK_LIST=\
-helloworld/hello.o \
+hello_proj/hellohellohello.o \
+shell_proj/shell.o \
 $(LIBS) \
 
-BINARIES=hello
+BINARIES=hello shell
 
 .PHONY: all clean install
 .SUFFIXES: .o .c
 
 all: $(BINARIES)
 
-hello: $(OBJS)
-	$(CC) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LINK_LIST)
+hello: hello_proj/hellohellohello.o
+	$(CC) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) hello_proj/hellohellohello.o $(LIBS)
+
+shell: shell_proj/shell.o
+	$(CC) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) shell_proj/shell.o $(LIBS)
 
 .c.o:
 	$(CC) -MD -c $< -o $@ -std=gnu11 $(CFLAGS) $(CPPFLAGS)
 
 clean:
-	rm -f $(BINARIES)
+	rm -f $(BINARIES) || true
 	rm -f $(OBJS) *.o */*.o */*/*.o
 	rm -f $(OBJS:.o=.d) *.d */*.d */*/*.d
 

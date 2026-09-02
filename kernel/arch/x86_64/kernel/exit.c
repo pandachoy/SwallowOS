@@ -4,22 +4,8 @@
 #include <kernel/list.h>
 
 void do_exit(int code) {
-    struct mm_struct *mm;
-
-
-    mm = current_task_TCB->mm;
-    if (!mm) return;
-
-    /* ummap */
-    setcr3(kernel_pgd);
-    do_ummap_user(mm->pgd);
-
-    /* clean mm */
-    mm_clean(mm);
-    kfree(mm);
-    current_task_TCB->mm = NULL;
-
-    /* terminate current task */
+    (void)code;
+    if (!current_task_TCB->mm) return;
     terminate_task();
 }
 
@@ -29,4 +15,3 @@ int sys_exit(int code) {
 
     return 0;
 }
-

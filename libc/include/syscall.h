@@ -16,4 +16,6 @@ uint64_t get_rsp0();
 
 int putchar(int ic);
 
+int getchar();
+
 #endif

@@ -21,14 +21,11 @@ get_to_ring3:
     # mov $0x002, %r11           # to load into eflags, no IF for test
     or $(1 << 9), %r11
 
-    # save rsp to tss_rsp0
-    # mov %rsp, tss_rsp0
-
-    # save current_task_TCB->tss_rsp0 to tss_rsp0
+    # save current kernel rsp to tcb->rsp0 and tss_rsp0,
+    # so that interrupts from ring3 and task switching work correctly
     mov current_task_TCB(%rip), %rsi
-    mov TCB_tss_rsp0_offset(%rip), %rdx
-    mov (%rsi, %rdx, 1), %rdx
-    mov %rdx, tss_rsp0
+    mov TCB_rsp0_offset(%rip), %rdx
+    mov %rsp, (%rsi, %rdx, 1)
 
     # load current_task_TCB->mm->rsp
     mov TCB_mm_offset(%rip), %rdx
@@ -91,10 +88,3 @@ setcr3:
     mov %rdi, %rax
     mov %rax, %cr3
     ret
-
-
-
-
-
-
-

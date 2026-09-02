@@ -9,3 +9,5 @@ qemu-system-$(./target-triplet-to-arch.sh $HOST) \
     -drive file=floppy_disk.img,if=floppy,format=raw \
     -boot d \
     -no-reboot \
+    -serial stdio \
+    # -s -S

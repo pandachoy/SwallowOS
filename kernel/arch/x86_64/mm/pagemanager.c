@@ -28,13 +28,13 @@ uint64_t *endframe = NULL;
 
 /* frame map operation */
 static uint64_t get_frame_map(unsigned int index) {
-    return (frame_map[index / UINT64_BITS] & (1 << (index % UINT64_BITS)))== 0 ? 0 : 1;
+    return (frame_map[index / UINT64_BITS] & (1ULL << (index % UINT64_BITS)))== 0 ? 0 : 1;
 }
 static void set_frame_map(unsigned int index, uint64_t val) {
     if (val > 0)
-        frame_map[index/UINT64_BITS] |= 1 << (index % UINT64_BITS);
+        frame_map[index/UINT64_BITS] |= 1ULL << (index % UINT64_BITS);
     else
-        frame_map[index/UINT64_BITS] &= ~(1 << (index % UINT64_BITS));
+        frame_map[index/UINT64_BITS] &= ~(1ULL << (index % UINT64_BITS));
 }
 
 
@@ -280,6 +280,12 @@ void do_ummap_user(uint64_t pgd) {
 
                     p_page = (uint64_t*)((p_pt[pt_index]  & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
                     kp_page = kp_pt ? (uint64_t*)((kp_pt[pt_index]  & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET) : NULL;
+
+                    if ((!kp_page) && p_page) {
+                        struct page_alloc pa = {p_page, 1};
+                        memset(p_page, 0, PAGE_SIZE);
+                        free_pages(&pa);
+                    }
                 }
 
                 if ((!kp_pt) && p_pt) {
@@ -306,9 +312,21 @@ void do_ummap_user(uint64_t pgd) {
             p_pml4[pml4_index] = 0;
         }
     }
+
+    /* Free PML4[511] PDPTR copy allocated by mm_dup_pgd — the page is a
+     * physical copy made during fork, not the kernel's own PDPTR page.
+     * Its sub-entries point to shared kernel PD pages; do NOT follow them. */
+    if (p_pml4[511] != 0) {
+        uint64_t *p_pdptr511 = (uint64_t*)((p_pml4[511] & (~PAGE_ADDR_MASK)) + HIGHER_HALF_OFFSET);
+        if (p_pdptr511) {
+            struct page_alloc pa = {p_pdptr511, 1};
+            memset(p_pdptr511, 0, PAGE_SIZE);
+            free_pages(&pa);
+        }
+    }
 }
 
-void page_fault_handler(unsigned long error_code) {
+void page_fault_handler(unsigned long error_code, uint64_t *frame) {
     uint64_t address = getcr2();
 
     // printk("_kernel_end: %x\n", (uint64_t)(&_kernel_end) - HIGHER_HALF_OFFSET);
@@ -335,7 +353,18 @@ void page_fault_handler(unsigned long error_code) {
         // panic("Do page fault, error: %u, address: %x\n", error_code, address);
         return;
     } else {
+        {
+        uint64_t _rip = frame[0];
+        uint64_t _cs  = frame[1];
+        uint64_t _rsp = frame[3];
+        printk("[Error] PF: err=%u addr=%x rip=%x cs=%x rflags=%x task=%u rsp0=%x rsp=%x\n",
+               (unsigned)error_code, (unsigned)address,
+               (unsigned)_rip, (unsigned)_cs, (unsigned)frame[2],
+               current_task_TCB ? (unsigned)current_task_TCB->task_id : 999,
+               current_task_TCB ? (unsigned)current_task_TCB->rsp0 : 0,
+               (unsigned)_rsp);
         panic("Unknown page fault error: %u, address: %x\n", error_code, address);
+    }
     }
     
     __asm__ volatile ("hlt");
